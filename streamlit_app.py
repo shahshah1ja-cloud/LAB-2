@@ -19,16 +19,13 @@ def find_file(name_variants):
 file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data_ukur.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-# --- FUNGSI TRANSFORMASI EPSG:4390 -> EPSG:4326 ---
+# --- FUNGSI TRANSFORMASI ---
 def convert_coords(df):
     try:
-        # Transformasi Kertau RSO / Johor Grid (4390) ke WGS84 (4326)
+        # EPSG:4390 (Kertau/Johor Grid) -> EPSG:4326 (WGS84)
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
-        
-        # Pastikan data adalah numeric
         e_vals = pd.to_numeric(df['E'], errors='coerce').values
         n_vals = pd.to_numeric(df['N'], errors='coerce').values
-        
         lon, lat = transformer.transform(e_vals, n_vals)
         df['lon'] = lon
         df['lat'] = lat
@@ -57,13 +54,11 @@ try:
         if not df.empty:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
-            
-            # Pengiraan Luas
             luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
 
             fig = go.Figure()
 
-            # A. LUKIS POLYGON LOT
+            # A. POLYGON LOT
             lats = list(df['lat']) + [df['lat'].iloc[0]]
             lons = list(df['lon']) + [df['lon'].iloc[0]]
             
@@ -73,7 +68,7 @@ try:
                 line=dict(width=4, color='#00FF00'),
                 marker=dict(size=10, color='red'),
                 fill="toself",
-                fillcolor="rgba(0, 255, 0, 0.3)", # Hijau lutsinar
+                fillcolor="rgba(0, 255, 0, 0.3)",
                 text=list(df['STN']) + [df['STN'].iloc[0]],
                 hoverinfo='text'
             ))
@@ -88,28 +83,20 @@ try:
                 showlegend=False
             ))
 
-            # C. LABEL LUAS
-            fig.add_trace(go.Scattermapbox(
-                lat=[centroid_lat], lon=[centroid_lon],
-                mode='text',
-                text=[f"LUAS: {luas:.2f} m²"],
-                textfont=dict(size=20, color="yellow", family="Arial Black"),
-                showlegend=False
-            ))
-
-            # --- PERBAIKAN SATELLITE (GOOGLE SATELLITE) ---
+            # --- KONFIGURASI GOOGLE SATELLITE (FIX) ---
             fig.update_layout(
                 mapbox=dict(
-                    style="white-bg", # Mesti guna white-bg supaya satelit tidak bertindih peta jalan
+                    style="white-bg", 
                     layers=[{
+                        "below": 'traces',
                         "sourcetype": "raster",
                         "source": [
-                            # Menggunakan Google Hybrid (Satelit + Nama Jalan)
+                            # Menggunakan Google Hybrid Satellite (Satelit + Nama Jalan)
                             "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
                         ]
                     }],
                     center=dict(lat=centroid_lat, lon=centroid_lon),
-                    zoom=19 # Zoom lebih dekat
+                    zoom=18
                 ),
                 margin=dict(l=0, r=0, t=0, b=0),
                 height=750,
@@ -118,7 +105,7 @@ try:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # 3. METRIK & JADUAL
+            # 3. METRIK
             st.divider()
             c1, c2, c3 = st.columns(3)
             perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
@@ -127,10 +114,7 @@ try:
             c2.metric("Perimeter", f"{perimeter:.3f} m")
             c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
-            st.subheader("Data Koordinat")
             st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
-        else:
-            st.error("Data koordinat tidak sah.")
     else:
         st.error("Fail data tidak dijumpai.")
 
