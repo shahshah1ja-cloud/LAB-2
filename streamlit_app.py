@@ -16,7 +16,6 @@ def find_file(name_variants):
             return variant
     return None
 
-# Mencari fail data (mengutamakan point.csv)
 file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data_ukur.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
@@ -74,7 +73,7 @@ try:
                 line=dict(width=4, color='#00FF00'),
                 marker=dict(size=10, color='red'),
                 fill="toself",
-                fillcolor="rgba(0, 255, 0, 0.2)",
+                fillcolor="rgba(0, 255, 0, 0.3)", # Hijau lutsinar
                 text=list(df['STN']) + [df['STN'].iloc[0]],
                 hoverinfo='text'
             ))
@@ -94,25 +93,23 @@ try:
                 lat=[centroid_lat], lon=[centroid_lon],
                 mode='text',
                 text=[f"LUAS: {luas:.2f} m²"],
-                textfont=dict(size=20, color="#FFFF00", family="Arial Black"),
+                textfont=dict(size=20, color="yellow", family="Arial Black"),
                 showlegend=False
             ))
 
-            # --- KONFIGURASI MAPBOX (SATELLITE FIX) ---
+            # --- PERBAIKAN SATELLITE (GOOGLE SATELLITE) ---
             fig.update_layout(
                 mapbox=dict(
-                    # Gunakan 'open-street-map' sebagai base supaya tidak putih jika satelit lambat load
-                    style="open-street-map", 
+                    style="white-bg", # Mesti guna white-bg supaya satelit tidak bertindih peta jalan
                     layers=[{
-                        "below": 'traces',
                         "sourcetype": "raster",
                         "source": [
-                            # Menggunakan ESRI World Imagery (Sangat Stabil)
-                            "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            # Menggunakan Google Hybrid (Satelit + Nama Jalan)
+                            "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
                         ]
                     }],
                     center=dict(lat=centroid_lat, lon=centroid_lon),
-                    zoom=18
+                    zoom=19 # Zoom lebih dekat
                 ),
                 margin=dict(l=0, r=0, t=0, b=0),
                 height=750,
@@ -130,12 +127,12 @@ try:
             c2.metric("Perimeter", f"{perimeter:.3f} m")
             c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
-            st.subheader("Data Koordinat (Kertau 4390 -> WGS84)")
+            st.subheader("Data Koordinat")
             st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
         else:
-            st.error("Data koordinat tidak sah atau kosong.")
+            st.error("Data koordinat tidak sah.")
     else:
-        st.error("Fail 'point.csv' tidak dijumpai.")
+        st.error("Fail data tidak dijumpai.")
 
 except Exception as e:
-    st.error(f"Ralat sistem: {e}")
+    st.error(f"Ralat: {e}")
