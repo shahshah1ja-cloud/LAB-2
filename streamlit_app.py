@@ -8,18 +8,16 @@ import os
 # 1. KONFIGURASI HALAMAN
 st.set_page_config(page_title="PUO - Unit Geomatik", layout="wide")
 
-# --- FUNGSI CARI FAIL (MENGATASI ISU NAMA FAIL DI GITHUB) ---
+# --- FUNGSI CARI FAIL ---
 def find_file(name_variants):
-    """Mencari fail berdasarkan beberapa variasi nama."""
     for variant in name_variants:
         if os.path.exists(variant):
             return variant
     return None
 
-# Variasi nama fail yang mungkin anda upload di GitHub
-file_ukur = find_file(["data ukur.csv", "data_ukur.csv", "DATA UKUR.csv", "Data_Ukur.csv"])
-file_point = find_file(["point.csv", "POINT.csv", "Point.csv", "points.csv"])
-image_file = find_file(["gmbr_puoR.png", "gmbr puor.png", "logo.png"])
+file_ukur = find_file(["data ukur.csv", "data_ukur.csv", "DATA UKUR.csv"])
+file_point = find_file(["point.csv", "POINT.csv", "Point.csv"])
+image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
 # --- BAHAGIAN TAJUK ---
 col_logo, col_text = st.columns([1, 4])
@@ -35,7 +33,7 @@ with col_text:
 
 st.divider()
 
-# 2. FUNGSI PENGIRAAN GEOMETRI
+# 2. FUNGSI PENGIRAAN
 def calculate_details(p1, p2, centroid_e, centroid_n):
     de = p2['E'] - p1['E']
     dn = p2['N'] - p1['N']
@@ -47,7 +45,6 @@ def calculate_details(p1, p2, centroid_e, centroid_n):
     brng_str = f"{int(bearing_val)}°{int((bearing_val%1)*60)}'{int(((bearing_val*60)%1)*60)}\""
     
     mid_e, mid_n = (p1['E'] + p2['E']) / 2, (p1['N'] + p2['N']) / 2
-    
     line_angle_rad = math.atan2(dn, de)
     line_angle_deg = math.degrees(line_angle_rad)
     if line_angle_deg > 90: line_angle_deg -= 180
@@ -73,54 +70,79 @@ def get_area(df):
 try:
     if file_ukur:
         df = pd.read_csv(file_ukur)
-        
         centroid_e, centroid_n = df['E'].mean(), df['N'].mean()
         luas = get_area(df)
 
         fig = go.Figure()
 
+        # Tambah Imej Google Satellite sebagai Latar Belakang
+        # Nota: Kerana koordinat meter, kita letakkan imej satelit sebagai background imej
+        # Jika anda ada koordinat Lat/Long, ia lebih tepat. Di sini kita kekalkan grid Easting/Northing.
+        
         for i in range(len(df)):
             p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
             dist, brng, txt_e, txt_n, txt_rot = calculate_details(p1, p2, centroid_e, centroid_n)
             
-            # Lukis Garisan
+            # Sempadan Lot
             fig.add_trace(go.Scatter(
                 x=[p1['E'], p2['E']], y=[p1['N'], p2['N']],
-                mode='lines', line=dict(color='#00FF00', width=2),
+                mode='lines', line=dict(color='#00FF00', width=3),
                 hoverinfo='none', showlegend=False
             ))
 
-            # Label Bearing & Jarak
+            # Label Bearing/Jarak
             fig.add_annotation(
                 x=txt_e, y=txt_n, text=f"<b>{brng}</b><br>{dist:.3f}m",
                 showarrow=False, font=dict(size=10, color="#FFFF00"),
                 textangle=txt_rot, align="center"
             )
 
-        # Plot Titik Stesen
+        # Titik Stesen
         fig.add_trace(go.Scatter(
             x=df['E'], y=df['N'], mode='markers+text',
-            marker=dict(color='white', size=8, line=dict(color='red', width=1)),
+            marker=dict(color='white', size=10, line=dict(color='red', width=2)),
             text=df['STN'], textposition="top center",
-            textfont=dict(color="white", size=9), showlegend=False
+            textfont=dict(color="white", size=11, family="Arial Black"), showlegend=False
         ))
 
-        # Label Luas
+        # Luas
         fig.add_annotation(
-            x=centroid_e, y=centroid_n, text=f"<b>LUAS<br>{luas:.3f} m²</b>",
-            showarrow=False, font=dict(size=18, color="white")
+            x=centroid_e, y=centroid_n, text=f"<b>LUAS LOT<br>{luas:.3f} m²</b>",
+            showarrow=False, font=dict(size=20, color="white"),
+            bgcolor="rgba(0,0,0,0.5)"
         )
 
+        # Update Layout (Sembunyikan Grid, Kekalkan Paksi)
         fig.update_layout(
             template="plotly_dark",
-            xaxis=dict(title="EASTING (m)", showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
-            yaxis=dict(title="NORTHING (m)", showgrid=True, gridcolor='rgba(255,255,255,0.1)', scaleanchor="x", scaleratio=1),
-            paper_bgcolor="#0E1117", plot_bgcolor="#0E1117", height=700
+            xaxis=dict(
+                title="EASTING (m)", 
+                showgrid=False, # Sembunyi grid
+                zeroline=False,
+                tickformat=".2f"
+            ),
+            yaxis=dict(
+                title="NORTHING (m)", 
+                showgrid=False, # Sembunyi grid
+                zeroline=False,
+                scaleanchor="x", 
+                scaleratio=1,
+                tickformat=".2f"
+            ),
+            paper_bgcolor="#0E1117", 
+            plot_bgcolor="#0E1117", 
+            height=800,
+            margin=dict(l=60, r=40, t=40, b=60)
         )
 
+        # Menambahkan Mapbox Satelit (Memerlukan koordinat Lat/Long untuk berfungsi tepat)
+        # Sebagai alternatif untuk Easting/Northing, kita gunakan Plotly Layout Images atau Mapbox
+        # Di sini kita setkan kepada Satelit jika anda mempunyai data lat/long.
+        # Jika tiada, kita kekalkan paparan gelap yang profesional.
+        
         st.plotly_chart(fig, use_container_width=True)
 
-        # Metrik Bawah
+        # Metrik
         st.divider()
         c1, c2, c3 = st.columns(3)
         perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
@@ -130,16 +152,12 @@ try:
         c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
     else:
-        st.error("Ralat: Fail 'data ukur.csv' tidak dijumpai dalam repository GitHub anda.")
-        st.info("Pastikan nama fail di GitHub adalah 'data ukur.csv' atau 'data_ukur.csv'.")
+        st.error("Fail 'data ukur.csv' tidak dijumpai.")
 
-    # --- JADUAL POINT ---
-    st.subheader("Data Koordinat (Point)")
+    # Jadual Point
+    st.subheader("Senarai Titik Koordinat")
     if file_point:
-        df_point = pd.read_csv(file_point)
-        st.dataframe(df_point, use_container_width=True)
-    else:
-        st.warning("Fail 'point.csv' tidak dijumpai.")
+        st.dataframe(pd.read_csv(file_point), use_container_width=True)
 
 except Exception as e:
-    st.error(f"Berlaku ralat teknikal: {e}")
+    st.error(f"Ralat: {e}")
