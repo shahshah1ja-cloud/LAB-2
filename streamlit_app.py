@@ -19,10 +19,10 @@ def find_file(name_variants):
 file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data_ukur.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-# --- FUNGSI TRANSFORMASI ---
+# --- FUNGSI TRANSFORMASI (KERTAU 4390 KE WGS84) ---
 def convert_coords(df):
     try:
-        # EPSG:4390 (Kertau/Johor Grid) -> EPSG:4326 (WGS84)
+        # Menukar koordinat Johor Grid ke Lat/Lon dunia
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
         e_vals = pd.to_numeric(df['E'], errors='coerce').values
         n_vals = pd.to_numeric(df['N'], errors='coerce').values
@@ -58,7 +58,7 @@ try:
 
             fig = go.Figure()
 
-            # A. POLYGON LOT
+            # A. LUKIS POLYGON LOT (HIJAU TERANG)
             lats = list(df['lat']) + [df['lat'].iloc[0]]
             lons = list(df['lon']) + [df['lon'].iloc[0]]
             
@@ -83,16 +83,26 @@ try:
                 showlegend=False
             ))
 
-            # --- KONFIGURASI GOOGLE SATELLITE (FIX) ---
+            # C. LABEL LUAS DI TENGAH
+            fig.add_trace(go.Scattermapbox(
+                lat=[centroid_lat], lon=[centroid_lon],
+                mode='text',
+                text=[f"LUAS: {luas:.2f} m²"],
+                textfont=dict(size=18, color="yellow", family="Arial Black"),
+                showlegend=False
+            ))
+
+            # --- KONFIGURASI GOOGLE SATELLITE (FORCE SATELLITE) ---
             fig.update_layout(
                 mapbox=dict(
-                    style="white-bg", 
+                    # Menggunakan gaya 'open-street-map' sebagai pelapik bawah
+                    style="open-street-map",
                     layers=[{
                         "below": 'traces',
                         "sourcetype": "raster",
                         "source": [
-                            # Menggunakan Google Hybrid Satellite (Satelit + Nama Jalan)
-                            "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                            # Menggunakan Server Google Satellite (lyrs=s untuk satelit murni)
+                            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
                         ]
                     }],
                     center=dict(lat=centroid_lat, lon=centroid_lon),
@@ -105,7 +115,7 @@ try:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # 3. METRIK
+            # 3. METRIK & JADUAL
             st.divider()
             c1, c2, c3 = st.columns(3)
             perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
@@ -115,8 +125,10 @@ try:
             c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
             st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
+        else:
+            st.error("Data koordinat dalam CSV tidak dapat dibaca.")
     else:
-        st.error("Fail data tidak dijumpai.")
+        st.error("Fail 'point.csv' tidak dijumpai.")
 
 except Exception as e:
-    st.error(f"Ralat: {e}")
+    st.error(f"Ralat teknikal: {e}")
