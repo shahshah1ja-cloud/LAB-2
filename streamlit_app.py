@@ -24,8 +24,6 @@ col_logo, col_text = st.columns([1, 4])
 with col_logo:
     if image_file:
         st.image(image_file, width=200)
-    else:
-        st.info("Logo PUO tidak dijumpai.")
 
 with col_text:
     st.markdown("<h1 style='margin-bottom: 0;'>POLITEKNIK UNGKU OMAR</h1>", unsafe_allow_html=True)
@@ -33,12 +31,11 @@ with col_text:
 
 st.divider()
 
-# 2. FUNGSI PENGIRAAN
+# 2. FUNGSI PENGIRAAN GEOMETRI
 def calculate_details(p1, p2, centroid_e, centroid_n):
     de = p2['E'] - p1['E']
     dn = p2['N'] - p1['N']
     dist = math.sqrt(de**2 + dn**2)
-    
     angle_rad = math.atan2(de, dn)
     angle_deg = math.degrees(angle_rad)
     bearing_val = angle_deg if angle_deg >= 0 else angle_deg + 360
@@ -49,7 +46,6 @@ def calculate_details(p1, p2, centroid_e, centroid_n):
     line_angle_deg = math.degrees(line_angle_rad)
     if line_angle_deg > 90: line_angle_deg -= 180
     elif line_angle_deg < -90: line_angle_deg += 180
-    txt_rot = -line_angle_deg
     
     norm_e, norm_n = -dn, de
     vec_to_mid_e, vec_to_mid_n = mid_e - centroid_e, mid_n - centroid_n
@@ -60,7 +56,7 @@ def calculate_details(p1, p2, centroid_e, centroid_n):
     offset_dist = 0.8  
     offset_e, offset_n = (norm_e / length) * offset_dist, (norm_n / length) * offset_dist
     
-    return dist, brng_str, mid_e + offset_e, mid_n + offset_n, txt_rot
+    return dist, brng_str, mid_e + offset_e, mid_n + offset_n, -line_angle_deg
 
 def get_area(df):
     x, y = df['E'].values, df['N'].values
@@ -75,78 +71,80 @@ try:
 
         fig = go.Figure()
 
-        # Tambah Imej Google Satellite sebagai Latar Belakang
-        # Nota: Kerana koordinat meter, kita letakkan imej satelit sebagai background imej
-        # Jika anda ada koordinat Lat/Long, ia lebih tepat. Di sini kita kekalkan grid Easting/Northing.
-        
+        # Tambah Sempadan Lot
         for i in range(len(df)):
             p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
             dist, brng, txt_e, txt_n, txt_rot = calculate_details(p1, p2, centroid_e, centroid_n)
             
-            # Sempadan Lot
             fig.add_trace(go.Scatter(
                 x=[p1['E'], p2['E']], y=[p1['N'], p2['N']],
                 mode='lines', line=dict(color='#00FF00', width=3),
                 hoverinfo='none', showlegend=False
             ))
 
-            # Label Bearing/Jarak
             fig.add_annotation(
                 x=txt_e, y=txt_n, text=f"<b>{brng}</b><br>{dist:.3f}m",
-                showarrow=False, font=dict(size=10, color="#FFFF00"),
+                showarrow=False, font=dict(size=11, color="#FFFF00"),
                 textangle=txt_rot, align="center"
             )
 
-        # Titik Stesen
+        # Plot Titik Stesen
         fig.add_trace(go.Scatter(
             x=df['E'], y=df['N'], mode='markers+text',
             marker=dict(color='white', size=10, line=dict(color='red', width=2)),
             text=df['STN'], textposition="top center",
-            textfont=dict(color="white", size=11, family="Arial Black"), showlegend=False
+            textfont=dict(color="white", size=10, border="black"), showlegend=False
         ))
 
-        # Luas
+        # Label Luas
         fig.add_annotation(
-            x=centroid_e, y=centroid_n, text=f"<b>LUAS LOT<br>{luas:.3f} m²</b>",
+            x=centroid_e, y=centroid_n, text=f"<b>LUAS<br>{luas:.3f} m²</b>",
             showarrow=False, font=dict(size=20, color="white"),
             bgcolor="rgba(0,0,0,0.5)"
         )
 
-        # Update Layout (Sembunyikan Grid, Kekalkan Paksi)
+        # --- SETTING BACKGROUND GOOGLE SATELLITE (VIA TILES) ---
         fig.update_layout(
             template="plotly_dark",
+            # Sembunyikan Grid tetapi kekalkan Paksi
             xaxis=dict(
                 title="EASTING (m)", 
-                showgrid=False, # Sembunyi grid
-                zeroline=False,
-                tickformat=".2f"
+                showgrid=False, 
+                zeroline=False, 
+                tickformat=".2f",
+                backgroundcolor="rgba(0,0,0,0)"
             ),
             yaxis=dict(
                 title="NORTHING (m)", 
-                showgrid=False, # Sembunyi grid
-                zeroline=False,
+                showgrid=False, 
+                zeroline=False, 
+                tickformat=".2f", 
                 scaleanchor="x", 
-                scaleratio=1,
-                tickformat=".2f"
+                scaleratio=1
+            ),
+            # Masukkan imej satelit sebagai layer background
+            mapbox=dict(
+                style="white-bg", # Kita guna lapisan custom di bawah
+                layers=[{
+                    "below": 'traces',
+                    "sourcetype": "raster",
+                    "source": [
+                        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                    ]
+                }]
             ),
             paper_bgcolor="#0E1117", 
-            plot_bgcolor="#0E1117", 
+            plot_bgcolor="rgba(0,0,0,0)", 
             height=800,
             margin=dict(l=60, r=40, t=40, b=60)
         )
 
-        # Menambahkan Mapbox Satelit (Memerlukan koordinat Lat/Long untuk berfungsi tepat)
-        # Sebagai alternatif untuk Easting/Northing, kita gunakan Plotly Layout Images atau Mapbox
-        # Di sini kita setkan kepada Satelit jika anda mempunyai data lat/long.
-        # Jika tiada, kita kekalkan paparan gelap yang profesional.
-        
         st.plotly_chart(fig, use_container_width=True)
 
         # Metrik
         st.divider()
         c1, c2, c3 = st.columns(3)
         perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
-        
         c1.metric("Bil. Stesen", len(df))
         c2.metric("Perimeter", f"{perimeter:.3f} m")
         c3.metric("Luas Tanah", f"{luas:.2f} m²")
@@ -155,8 +153,8 @@ try:
         st.error("Fail 'data ukur.csv' tidak dijumpai.")
 
     # Jadual Point
-    st.subheader("Senarai Titik Koordinat")
     if file_point:
+        st.subheader("Data Koordinat (Point)")
         st.dataframe(pd.read_csv(file_point), use_container_width=True)
 
 except Exception as e:
