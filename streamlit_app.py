@@ -16,7 +16,7 @@ def find_file(name_variants):
             return variant
     return None
 
-file_ukur = find_file(["data ukur.csv", "data_ukur.csv", "DATA UKUR.csv"])
+file_ukur = find_file(["point.csv", "POINT.csv", "Point.csv"])
 file_point = find_file(["point.csv", "POINT.csv", "Point.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
