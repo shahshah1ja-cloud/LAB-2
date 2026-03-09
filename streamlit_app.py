@@ -9,28 +9,18 @@ import os
 st.set_page_config(page_title="PUO - Unit Geomatik", layout="wide")
 
 # --- LOGIK PENGESANAN FAIL ---
-# Menggunakan cara yang lebih selamat untuk Streamlit Cloud
-current_dir = os.getcwd() 
+current_dir = os.getcwd()
 image_path = os.path.join(current_dir, "gmbr_puoR.png")
-csv_ukur_path = os.path.join(current_dir, "data_ukur.csv") # Elakkan jarak pada nama fail
+csv_ukur_path = os.path.join(current_dir, "data_ukur.csv")
 csv_point_path = os.path.join(current_dir, "point.csv")
-
-# --- FUNGSI DATA CONTOH (Sangat Penting untuk Deployment) ---
-def get_data(path, default_data):
-    if os.path.exists(path):
-        return pd.read_csv(path)
-    else:
-        st.info(f"Nota: Fail '{os.path.basename(path)}' tidak dijumpai. Memaparkan data contoh.")
-        return pd.DataFrame(default_data)
 
 # --- BAHAGIAN TAJUK ---
 col_logo, col_text = st.columns([1, 4])
-
 with col_logo:
     if os.path.exists(image_path):
         st.image(image_path, width=200)
     else:
-        st.warning("Logo PUO (gmbr_puoR.png) tiada.")
+        st.info("Logo tidak dijumpai.")
 
 with col_text:
     st.markdown("<h1 style='margin-bottom: 0;'>POLITEKNIK UNGKU OMAR</h1>", unsafe_allow_html=True)
@@ -38,7 +28,7 @@ with col_text:
 
 st.divider()
 
-# 2. FUNGSI PENGIRAAN GEOMETRI
+# 2. FUNGSI PENGIRAAN
 def calculate_details(p1, p2, centroid_e, centroid_n):
     de = p2['E'] - p1['E']
     dn = p2['N'] - p1['N']
@@ -74,15 +64,14 @@ def get_area(df):
 
 # 3. PROSES DATA & PLOTTING
 try:
-    # Data Default jika fail CSV tiada
-    default_ukur = {
-        'STN': ['1', '2', '3', '4'],
-        'E': [100.0, 120.0, 120.0, 100.0],
-        'N': [100.0, 100.0, 120.0, 120.0]
-    }
-    
-    df = get_data(csv_ukur_path, default_ukur)
-    
+    # Membaca data
+    if os.path.exists(csv_ukur_path):
+        df = pd.read_csv(csv_ukur_path)
+    else:
+        # Data dummy jika fail tiada supaya tidak error
+        df = pd.DataFrame({'STN': ['1','2','3'], 'E': [100, 120, 110], 'N': [100, 100, 120]})
+        st.warning("Fail 'data_ukur.csv' tidak dijumpai. Menggunakan data contoh.")
+
     centroid_e, centroid_n = df['E'].mean(), df['N'].mean()
     luas = get_area(df)
 
@@ -92,10 +81,58 @@ try:
         p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
         dist, brng, txt_e, txt_n, txt_rot = calculate_details(p1, p2, centroid_e, centroid_n)
         
+        # Garisan Sempadan
         fig.add_trace(go.Scatter(
             x=[p1['E'], p2['E']], y=[p1['N'], p2['N']],
             mode='lines', line=dict(color='#00FF00', width=2),
             hoverinfo='none', showlegend=False
         ))
 
-        fig.add_
+        # Label Bearing & Jarak
+        fig.add_annotation(
+            x=txt_e, y=txt_n, text=f"<b>{brng}</b><br>{dist:.3f}m",
+            showarrow=False, font=dict(size=10, color="#FFFF00"),
+            textangle=txt_rot, align="center"
+        )
+
+    # Titik Stesen
+    fig.add_trace(go.Scatter(
+        x=df['E'], y=df['N'], mode='markers+text',
+        marker=dict(color='white', size=8, line=dict(color='red', width=1)),
+        text=df['STN'], textposition="top center",
+        textfont=dict(color="white", size=9), showlegend=False
+    ))
+
+    # Label Luas di Tengah
+    fig.add_annotation(
+        x=centroid_e, y=centroid_n, text=f"<b>LUAS<br>{luas:.3f} m²</b>",
+        showarrow=False, font=dict(size=18, color="white")
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        xaxis=dict(title="EASTING (m)", showgrid=True),
+        yaxis=dict(title="NORTHING (m)", showgrid=True, scaleanchor="x", scaleratio=1),
+        paper_bgcolor="#0E1117", plot_bgcolor="#0E1117", height=700
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Jadual Data Point
+    st.subheader("Data Koordinat (Point)")
+    if os.path.exists(csv_point_path):
+        df_p = pd.read_csv(csv_point_path)
+        st.dataframe(df_p, use_container_width=True)
+    else:
+        st.info("Fail 'point.csv' tidak dijumpai.")
+
+    # Metrik
+    st.divider()
+    perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Bil. Stesen", len(df))
+    c2.metric("Perimeter", f"{perimeter:.3f} m")
+    c3.metric("Luas Tanah", f"{luas:.2f} m²")
+
+except Exception as e:
+    st.error(f"Ralat: {e}")
