@@ -16,18 +16,22 @@ def find_file(name_variants):
             return variant
     return None
 
-file_ukur = find_file(["point.csv", "POINT.csv", "Point.csv"])
-file_point = find_file(["point.csv", "POINT.csv", "Point.csv"])
+# Mencari fail data ukur atau point
+file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data ukur.csv", "data_ukur.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-# --- FUNGSI TRANSFORMASI EPSG:4390 -> EPSG:4326 ---
+# --- FUNGSI TRANSFORMASI KOORDINAT ---
 def convert_coords(df):
     try:
-        # EPSG:4390 = Kertau RSO / Johor Grid
-        # EPSG:4326 = WGS84 (Lat/Lon)
-        # 'always_xy=True' memastikan urutan input adalah Easting(X), Northing(Y)
+        # Transformasi dari Kertau/Johor Grid (4390) ke WGS84 (4326)
+        # Sila pastikan library 'pyproj' ada dalam requirements.txt
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
-        lon, lat = transformer.transform(df['E'].values, df['N'].values)
+        
+        # Ekstrak E dan N, pastikan ia adalah float
+        e_vals = df['E'].astype(float).values
+        n_vals = df['N'].astype(float).values
+        
+        lon, lat = transformer.transform(e_vals, n_vals)
         df['lon'] = lon
         df['lat'] = lat
         return df
@@ -48,11 +52,13 @@ st.divider()
 
 # 2. PROSES DATA & PLOTTING
 try:
-    if file_ukur:
-        # Baca data CSV
-        df = pd.read_csv(file_ukur)
+    if file_path:
+        df = pd.read_csv(file_path)
         
-        # PROSES PENTING: Tukar koordinat ke Lat/Lon
+        # Pembersihan data (buang baris kosong jika ada)
+        df = df.dropna(subset=['E', 'N'])
+        
+        # Transformasi
         df = convert_coords(df)
         
         centroid_lat = df['lat'].mean()
@@ -63,8 +69,7 @@ try:
 
         fig = go.Figure()
 
-        # A. LUKIS POLYGON (Guna Scattermapbox)
-        # Menutup loop polygon
+        # A. LUKIS POLYGON & SEMPADAN
         lats = list(df['lat']) + [df['lat'].iloc[0]]
         lons = list(df['lon']) + [df['lon'].iloc[0]]
         
@@ -73,12 +78,11 @@ try:
             lon=lons,
             mode='lines+markers',
             line=dict(width=4, color='#00FF00'),
-            marker=dict(size=10, color='red'),
+            marker=dict(size=12, color='red'),
             fill="toself",
             fillcolor="rgba(0, 255, 0, 0.2)",
             text=list(df['STN']) + [df['STN'].iloc[0]],
-            hoverinfo='text',
-            name="Sempadan Lot"
+            hoverinfo='text'
         ))
 
         # B. LABEL STESEN
@@ -98,24 +102,24 @@ try:
             lon=[centroid_lon],
             mode='text',
             text=[f"LUAS: {luas:.2f} m²"],
-            textfont=dict(size=18, color="yellow", family="Arial Black"),
+            textfont=dict(size=22, color="yellow", family="Arial Black"),
             showlegend=False
         ))
 
-        # --- KONFIGURASI MAPBOX (SATELLITE) ---
+        # --- KONFIGURASI MAPBOX (SATELLITE ALTERNATIF) ---
         fig.update_layout(
             mapbox=dict(
-                style="white-bg", # Mesti 'white-bg' untuk guna custom raster layers
+                # Menggunakan style Esri World Imagery (Lebih stabil untuk Plotly)
+                style="white-bg",
                 layers=[{
                     "below": 'traces',
                     "sourcetype": "raster",
                     "source": [
-                        # Pilihan 1: Google Satellite (Paling Stabil)
-                        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     ]
                 }],
                 center=dict(lat=centroid_lat, lon=centroid_lon),
-                zoom=18
+                zoom=17
             ),
             margin=dict(l=0, r=0, t=0, b=0),
             height=750,
@@ -125,7 +129,7 @@ try:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # 3. METRIK BAWAH
+        # 3. METRIK & JADUAL
         st.divider()
         c1, c2, c3 = st.columns(3)
         perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
@@ -134,12 +138,11 @@ try:
         c2.metric("Perimeter", f"{perimeter:.3f} m")
         c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
-        if file_point:
-            st.subheader("Data Koordinat Asal (Kertau / Johor Grid)")
-            st.dataframe(pd.read_csv(file_point), use_container_width=True)
+        st.subheader("Data Koordinat")
+        st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
 
     else:
-        st.error("Ralat: Fail 'data ukur.csv' tidak dijumpai.")
+        st.error("Fail data (point.csv) tidak dijumpai dalam folder.")
 
 except Exception as e:
     st.error(f"Berlaku ralat sistem: {e}")
