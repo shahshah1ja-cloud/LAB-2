@@ -20,21 +20,22 @@ file_ukur = find_file(["data ukur.csv", "data_ukur.csv", "DATA UKUR.csv"])
 file_point = find_file(["point.csv", "POINT.csv", "Point.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-# --- FUNGSI AUTO CONVERT (KERTAU/JOHOR GRID -> WGS84) ---
+# --- FUNGSI TRANSFORMASI EPSG:4390 -> EPSG:4326 ---
 def convert_coords(df):
     try:
-        # EPSG:4390 (Kertau/Johor Grid) ke EPSG:4326 (WGS84 Lat/Lon)
-        # Kita gunakan 'always_xy=True' supaya E=X dan N=Y
+        # EPSG:4390 = Kertau RSO / Johor Grid
+        # EPSG:4326 = WGS84 (Lat/Lon)
+        # 'always_xy=True' memastikan urutan input adalah Easting(X), Northing(Y)
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
         lon, lat = transformer.transform(df['E'].values, df['N'].values)
         df['lon'] = lon
         df['lat'] = lat
         return df
     except Exception as e:
-        st.error(f"Ralat Transformasi: {e}")
+        st.error(f"Ralat Transformasi Koordinat: {e}")
         return df
 
-# --- TAJUK ---
+# --- BAHAGIAN TAJUK ---
 col_logo, col_text = st.columns([1, 4])
 with col_logo:
     if image_file: st.image(image_file, width=180)
@@ -48,16 +49,22 @@ st.divider()
 # 2. PROSES DATA & PLOTTING
 try:
     if file_ukur:
+        # Baca data CSV
         df = pd.read_csv(file_ukur)
+        
+        # PROSES PENTING: Tukar koordinat ke Lat/Lon
         df = convert_coords(df)
         
-        centroid_lat, centroid_lon = df['lat'].mean(), df['lon'].mean()
+        centroid_lat = df['lat'].mean()
+        centroid_lon = df['lon'].mean()
+        
+        # Pengiraan Luas (Formula Surveyor)
         luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
 
         fig = go.Figure()
 
-        # 1. Plot Polygon Lot (Sempadan)
-        # Menambah stesen terakhir ke awal untuk tutup polygon
+        # A. LUKIS POLYGON (Guna Scattermapbox)
+        # Menutup loop polygon
         lats = list(df['lat']) + [df['lat'].iloc[0]]
         lons = list(df['lon']) + [df['lon'].iloc[0]]
         
@@ -66,14 +73,15 @@ try:
             lon=lons,
             mode='lines+markers',
             line=dict(width=4, color='#00FF00'),
-            marker=dict(size=8, color='red'),
+            marker=dict(size=10, color='red'),
             fill="toself",
             fillcolor="rgba(0, 255, 0, 0.2)",
             text=list(df['STN']) + [df['STN'].iloc[0]],
-            hoverinfo='text'
+            hoverinfo='text',
+            name="Sempadan Lot"
         ))
 
-        # 2. Label Nama Stesen
+        # B. LABEL STESEN
         fig.add_trace(go.Scattermapbox(
             lat=df['lat'],
             lon=df['lon'],
@@ -84,27 +92,26 @@ try:
             showlegend=False
         ))
 
-        # 3. Label Luas
+        # C. LABEL LUAS
         fig.add_trace(go.Scattermapbox(
             lat=[centroid_lat],
             lon=[centroid_lon],
             mode='text',
             text=[f"LUAS: {luas:.2f} m²"],
-            textfont=dict(size=18, color="#FFFF00", family="Arial Black"),
+            textfont=dict(size=18, color="yellow", family="Arial Black"),
             showlegend=False
         ))
 
-        # --- PENYELESAIAN PETA PUTIH ---
-        # Menggunakan 'sputnik' atau 'open-street-map' jika ArcGIS gagal
-        # Di sini kita gunakan Mapbox Style yang stabil
+        # --- KONFIGURASI MAPBOX (SATELLITE) ---
         fig.update_layout(
             mapbox=dict(
-                style="white-bg",
+                style="white-bg", # Mesti 'white-bg' untuk guna custom raster layers
                 layers=[{
                     "below": 'traces',
                     "sourcetype": "raster",
                     "source": [
-                        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" # Google Satellite Tile Server
+                        # Pilihan 1: Google Satellite (Paling Stabil)
+                        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
                     ]
                 }],
                 center=dict(lat=centroid_lat, lon=centroid_lon),
@@ -112,26 +119,27 @@ try:
             ),
             margin=dict(l=0, r=0, t=0, b=0),
             height=750,
-            showlegend=False
+            showlegend=False,
+            paper_bgcolor="#0E1117"
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # 3. METRIK & JADUAL
+        # 3. METRIK BAWAH
         st.divider()
+        c1, c2, c3 = st.columns(3)
         perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
         
-        c1, c2, c3 = st.columns(3)
         c1.metric("Bil. Stesen", len(df))
         c2.metric("Perimeter", f"{perimeter:.3f} m")
         c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
         if file_point:
-            st.subheader("Data Koordinat (Kertau / Johor Grid 4390)")
+            st.subheader("Data Koordinat Asal (Kertau / Johor Grid)")
             st.dataframe(pd.read_csv(file_point), use_container_width=True)
 
     else:
-        st.error("Fail data tidak dijumpai. Sila semak nama fail di GitHub.")
+        st.error("Ralat: Fail 'data ukur.csv' tidak dijumpai.")
 
 except Exception as e:
-    st.error(f"Ralat sistem: {e}")
+    st.error(f"Berlaku ralat sistem: {e}")
