@@ -2,128 +2,109 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import math
-import plotly.graph_objects as go
 import os
 from pyproj import Transformer
+import folium
+from streamlit_folium import folium_static
 
 # 1. KONFIGURASI HALAMAN
 st.set_page_config(page_title="PUO - Unit Geomatik", layout="wide")
 
-# --- SIDEBAR (PENENTUKURAN OFFSET) ---
-with st.sidebar:
-    st.title("Sesi: :green[Adam]")
-    if st.button("Log Keluar"):
-        st.stop()
-    
-    st.divider()
-    st.subheader("🎯 Penantukur (Offset)")
-    offset_n = st.slider("Utara/Selatan (m)", -10.0, 10.0, 0.0, step=0.01)
-    offset_e = st.slider("Timur/Barat (m)", -10.0, 10.0, 0.0, step=0.01)
-    
-    epsg_code = st.text_input("Kod EPSG", "4390")
-    
-    st.subheader("Muat naik CSV")
-    uploaded_file = st.file_uploader("Drag and drop file here", type=["csv"])
-
-# --- FUNGSI CARI FAIL (BACKUP JIKA TIADA UPLOAD) ---
+# --- FUNGSI CARI FAIL ---
 def find_file(name_variants):
     for variant in name_variants:
-        if os.path.exists(variant): return variant
+        if os.path.exists(variant):
+            return variant
     return None
 
-# --- FUNGSI TRANSFORMASI & OFFSET ---
-def process_data(df, epsg, off_e, off_n):
+file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data_ukur.csv"])
+image_file = find_file(["gmbr_puoR.png", "logo.png"])
+
+# --- FUNGSI TRANSFORMASI (KERTAU 4390 KE WGS84) ---
+def convert_coords(df):
     try:
-        # Tambah offset pada koordinat asal
-        df['E_adj'] = df['E'] + off_e
-        df['N_adj'] = df['N'] + off_n
-        
-        # Tukar ke Lat/Lon (WGS84)
-        transformer = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
-        lon, lat = transformer.transform(df['E_adj'].values, df['N_adj'].values)
-        df['lat'], df['lon'] = lat, lon
-        return df
+        # Transformasi Johor Grid (4390) ke Lat/Lon (4326)
+        transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
+        e_vals = pd.to_numeric(df['E'], errors='coerce').values
+        n_vals = pd.to_numeric(df['N'], errors='coerce').values
+        lon, lat = transformer.transform(e_vals, n_vals)
+        df['lon'] = lon
+        df['lat'] = lat
+        return df.dropna(subset=['lat', 'lon'])
     except Exception as e:
-        st.error(f"Ralat Koordinat: {e}")
+        st.error(f"Ralat Transformasi: {e}")
         return df
 
-# --- FUNGSI KIRA BEARING & JARAK ---
-def get_label(p1, p2):
-    de = p2['E'] - p1['E']
-    dn = p2['N'] - p1['N']
-    dist = math.sqrt(de**2 + dn**2)
-    brng = math.degrees(math.atan2(de, dn))
-    if brng < 0: brng += 360
-    d = int(brng)
-    m = int((brng % 1) * 60)
-    return f"{d}°{m}'\n{dist:.3f}m", (p1['lat']+p2['lat'])/2, (p1['lon']+p2['lon'])/2
+# --- TAJUK ---
+col_logo, col_text = st.columns([1, 4])
+with col_logo:
+    if image_file: st.image(image_file, width=180)
+with col_text:
+    st.markdown("<h1 style='color: white; margin-bottom:0;'>POLITEKNIK UNGKU OMAR</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #00FF00; margin-top:0;'>Jabatan Kejuruteraan Awam - Unit Geomatik</h3>", unsafe_allow_html=True)
 
-# --- MAIN LOGIC ---
-target_file = uploaded_file if uploaded_file else find_file(["point.csv", "data_ukur.csv"])
+st.divider()
 
-if target_file:
-    df = pd.read_csv(target_file)
-    df = process_data(df, epsg_code, offset_e, offset_n)
-    
-    centroid_lat, centroid_lon = df['lat'].mean(), df['lon'].mean()
-    luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
+# 2. PROSES DATA & PLOTTING (MENGGUNAKAN FOLIUM/LEAFLET)
+try:
+    if file_path:
+        df = pd.read_csv(file_path)
+        df = convert_coords(df)
+        
+        if not df.empty:
+            centroid_lat = df['lat'].mean()
+            centroid_lon = df['lon'].mean()
+            
+            # --- CIPTA PETA LEAFLET (FOLIUM) ---
+            # Ini akan memastikan paparan sebijik macam screenshot anda (ada butang zoom)
+            m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=19, control_scale=True)
 
-    fig = go.Figure()
+            # TAMBAH GOOGLE SATELLITE LAYER (BACKEND)
+            google_satellite = folium.TileLayer(
+                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                attr='Google',
+                name='Google Satellite',
+                overlay=False,
+                control=True
+            ).add_to(m)
 
-    # 1. LUKIS POLYGON (Kekal Hijau/Kuning seperti gambar)
-    lats = list(df['lat']) + [df['lat'].iloc[0]]
-    lons = list(df['lon']) + [df['lon'].iloc[0]]
-    
-    fig.add_trace(go.Scattermapbox(
-        lat=lats, lon=lons,
-        mode='lines+markers',
-        line=dict(width=3, color='yellow'),
-        marker=dict(size=8, color='red'),
-        fill="toself",
-        fillcolor="rgba(0, 255, 0, 0.2)",
-        hoverinfo='none'
-    ))
+            # LUKIS POLYGON (GARISAN KUNING/HIJAU)
+            points = [[row['lat'], row['lon']] for index, row in df.iterrows()]
+            points.append([df.iloc[0]['lat'], df.iloc[0]['lon']]) # Tutup loop
+            
+            folium.PolyLine(points, color="yellow", weight=4, opacity=1).add_to(m)
+            
+            # TAMBAH MARKER MERAH PADA SETIAP STESEN
+            for index, row in df.iterrows():
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=5,
+                    color='red',
+                    fill=True,
+                    fill_color='red',
+                    fill_opacity=1,
+                    popup=f"Stesen: {row['STN']}"
+                ).add_to(m)
 
-    # 2. TAMBAH LABEL BEARING & JARAK PADA GARISAN
-    for i in range(len(df)):
-        p1 = df.iloc[i]
-        p2 = df.iloc[(i + 1) % len(df)]
-        txt, m_lat, m_lon = get_label(p1, p2)
-        fig.add_trace(go.Scattermapbox(
-            lat=[m_lat], lon=[m_lon],
-            mode='text',
-            text=[txt],
-            textfont=dict(size=10, color="#00FF00", family="Arial Black"),
-            showlegend=False
-        ))
+            # PAPARKAN PETA DALAM STREAMLIT
+            st.subheader("Paparan Satelit (Leaflet Enjin)")
+            folium_static(m, width=1100, height=600)
 
-    # --- KONFIGURASI PETA (GOOGLE SATELLITE FIX) ---
-    fig.update_layout(
-        mapbox=dict(
-            style="white-bg",
-            layers=[{
-                "below": 'traces',
-                "sourcetype": "raster",
-                "source": ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"]
-            }],
-            center=dict(lat=centroid_lat, lon=centroid_lon),
-            zoom=19 # Zoom lebih dekat seperti dalam gambar
-        ),
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=700,
-        paper_bgcolor="#1E1E1E"
-    )
+            # 3. METRIK & JADUAL (KEKALKAN YANG BETUL)
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
+            perimeter = sum([math.sqrt((df.iloc[(i+1)%len(df)]['E']-df.iloc[i]['E'])**2 + (df.iloc[(i+1)%len(df)]['N']-df.iloc[i]['N'])**2) for i in range(len(df))])
+            
+            c1.metric("Bil. Stesen", len(df))
+            c2.metric("Perimeter", f"{perimeter:.3f} m")
+            c3.metric("Luas Tanah", f"{luas:.2f} m²")
 
-    st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
+        else:
+            st.error("Data tidak sah.")
+    else:
+        st.error("Fail data tidak dijumpai.")
 
-    # METRIK BAWAH
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Luas Tanah", f"{luas:.3f} m²")
-    c2.metric("Pusat Lat", f"{centroid_lat:.6f}")
-    c3.metric("Pusat Lon", f"{centroid_lon:.6f}")
-    
-else:
-    st.info("Sila muat naik fail CSV atau pastikan 'point.csv' ada dalam GitHub.")
-
-# Header Logo & Tajuk (Kekalkan di bawah jika perlu)
-st.markdown("<h3 style='text-align: center; color: #00FF00;'>Unit Geomatik - PUO</h3>", unsafe_allow_html=True)
+except Exception as e:
+    st.error(f"Ralat: {e}")
