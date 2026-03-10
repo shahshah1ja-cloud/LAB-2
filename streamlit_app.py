@@ -20,7 +20,7 @@ def find_file(name_variants):
 file_path = find_file(["point.csv", "POINT.csv", "Point.csv", "data_ukur.csv"])
 image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-# --- FUNGSI TRANSFORMASI (KERTAU 4390 -> WGS84) ---
+# --- FUNGSI TRANSFORMASI ---
 def convert_coords(df):
     try:
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
@@ -54,7 +54,7 @@ try:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
             
-            # CIPTA PETA (Max Zoom 22 supaya imej satelit kekal)
+            # PETA (Max Zoom 22 supaya imej satelit tidak hilang)
             m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=20, max_zoom=22)
 
             # GOOGLE HYBRID SATELLITE
@@ -66,7 +66,7 @@ try:
                 control=True
             ).add_to(m)
 
-            # LUKIS SEMPADAN & TEKS SEJAJAR
+            # LUKIS SEMPADAN & TEKS SEJAJAR (RUJUKAN LOGIK PLOTLY ANDA)
             for i in range(len(df)):
                 p1 = df.iloc[i]
                 p2 = df.iloc[(i + 1) % len(df)]
@@ -75,70 +75,72 @@ try:
                 locs = [[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]]
                 folium.PolyLine(locs, color="yellow", weight=3, opacity=1).add_to(m)
                 
-                # Kira Bearing & Jarak
-                de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
+                # --- PENGIRAAN JARAK & BEARING (GEOMATIK) ---
+                de = p2['E'] - p1['E']
+                dn = p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                bearing_rad = math.atan2(de, dn)
-                bearing_deg = math.degrees(bearing_rad)
-                if bearing_deg < 0: bearing_deg += 360
                 
-                label_text = f"{int(bearing_deg)}°{int((bearing_deg%1)*60):02d}' | {dist:.3f}m"
-                
-                # --- FORMULA PUTARAN TEKS SEJAJAR ---
-                # Mengubah bearing geomatik kepada sudut putaran CSS
-                text_rotation = 90 - bearing_deg 
-                
-                # Menyelaraskan teks supaya sentiasa boleh dibaca (tidak terbalik)
-                if text_rotation > 90: text_rotation -= 180
-                elif text_rotation < -90: text_rotation += 180
+                angle_rad = math.atan2(de, dn)
+                angle_deg = math.degrees(angle_rad)
+                bearing_val = angle_deg if angle_deg >= 0 else angle_deg + 360
+                brng_str = f"{int(bearing_val)}°{int((bearing_val%1)*60)}'"
 
-                # Label di Tengah Garisan
+                # --- LOGIK ROTASI TEKS (MENGIKUT CODING RUJUKAN ANDA) ---
+                # Menggunakan atan2(dn, de) untuk sudut kecerunan relatif terhadap paksi-X
+                line_angle_rad = math.atan2(dn, de)
+                line_angle_deg = math.degrees(line_angle_rad)
+                
+                # Laraskan supaya tulisan sentiasa boleh dibaca (tidak terbalik)
+                if line_angle_deg > 90:
+                    line_angle_deg -= 180
+                elif line_angle_deg < -90:
+                    line_angle_deg += 180
+                
+                # Dalam CSS/Folium, putaran adalah mengikut arah jam
+                txt_rot = -line_angle_deg
+
+                # Posisi Tengah
                 mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
                 
                 folium.Marker(
                     [mid_lat, mid_lon],
                     icon=folium.DivIcon(
-                        icon_size=(200,40),
-                        icon_anchor=(100,20), # Anchor tepat di tengah kotak icon_size
+                        icon_size=(250,40),
+                        icon_anchor=(125,20),
                         html=f"""
                         <div style="
-                            width: 200px;
-                            height: 40px;
+                            width: 250px;
                             display: flex;
                             justify-content: center;
                             align-items: center;
-                            transform: rotate({text_rotation}deg);
-                            transform-origin: center center;
-                            pointer-events: none;">
+                            transform: rotate({txt_rot}deg);
+                            transform-origin: center center;">
                             <span style="
                                 font-size: 10pt; 
                                 color: #00FF00; 
                                 font-weight: bold; 
                                 white-space: nowrap;
                                 text-shadow: 2px 2px 3px black;">
-                                {label_text}
+                                {brng_str} | {dist:.3f}m
                             </span>
                         </div>
                         """
                     )
                 ).add_to(m)
 
-            # MARKER STESEN (MERAH)
+            # MARKER STESEN
             for _, row in df.iterrows():
-                folium.CircleMarker(
-                    location=[row['lat'], row['lon']],
-                    radius=5, color='red', fill=True, fill_color='red'
-                ).add_to(m)
+                folium.CircleMarker(location=[row['lat'], row['lon']], radius=5, color='red', fill=True, fill_color='red').add_to(m)
 
             folium_static(m, width=1100, height=650)
 
-            # 3. METRIK BAWAH
+            # METRIK
             st.divider()
             c1, c2, c3 = st.columns(3)
             c1.metric("Bil. Stesen", len(df))
             c3.metric("Sesi Pengguna", "Khalid")
 
     else:
-        st.error("Fail 'point.csv' tidak dijumpai.")
+        st.error("Fail data tidak dijumpai.")
 except Exception as e:
     st.error(f"Ralat: {e}")
