@@ -10,7 +10,6 @@ from streamlit_folium import folium_static
 # 1. KONFIGURASI HALAMAN & SESI
 st.set_page_config(page_title="PUO - Unit Geomatik", layout="wide")
 
-# Inisialisasi status log masuk jika belum wujud
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
@@ -18,40 +17,30 @@ if 'logged_in' not in st.session_state:
 def login_page():
     st.markdown("<br><br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
+        id_input = st.text_input("ID Pengguna", placeholder="Masukkan ID anda")
+        pass_input = st.text_input("Kata Laluan", type="password", placeholder="Masukkan kata laluan")
         
-        with st.container():
-            # Input berdasarkan rujukan gambar anda
-            id_input = st.text_input("ID Pengguna", placeholder="Masukkan ID anda")
-            pass_input = st.text_input("Kata Laluan", type="password", placeholder="Masukkan kata laluan")
-            
-            btn_col1, btn_col2 = st.columns([1, 1])
-            with btn_col1:
-                if st.button("Masuk", use_container_width=True):
-                    # Semakan kredential yang anda tetapkan
-                    if id_input == "01DGU24F1033" and pass_input == "KHALID123":
-                        st.session_state['logged_in'] = True
-                        st.rerun()
-                    else:
-                        st.error("ID atau Kata Laluan Salah!")
-            
-            with btn_col2:
-                st.button("Lupa Kata Laluan?", use_container_width=True)
+        if st.button("Masuk", use_container_width=True):
+            if id_input == "01DGU24F1033" and pass_input == "KHALID123":
+                st.session_state['logged_in'] = True
+                st.rerun()
+            else:
+                st.error("ID atau Kata Laluan Salah!")
 
 # --- FUNGSI UTAMA APLIKASI ---
 def main_app():
-    # --- FUNGSI CARI FAIL ---
-    def find_file(name_variants):
-        for variant in name_variants:
-            if os.path.exists(variant): return variant
+    # Fungsi Cari Fail
+    def find_file(variants):
+        for v in variants:
+            if os.path.exists(v): return v
         return None
 
     file_path = find_file(["point.csv", "data_ukur.csv"])
     image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-    # 2. SIDEBAR (KAWALAN PAPARAN & TETAPAN)
+    # SIDEBAR (TETAPAN BELAH KIRI)
     with st.sidebar:
         st.markdown(f"**Sesi:** <span style='color: #00FF00;'>Khalid</span>", unsafe_allow_html=True)
         if st.button("🚪 Log Keluar"):
@@ -71,9 +60,9 @@ def main_app():
         size_brng = st.slider("Saiz Bearing/Jarak", 8, 20, 10)
         
         st.divider()
-        epsg_code = st.text_input("Kod EPSG", value="4390")
+        st.text_input("Kod EPSG", value="4390")
 
-    # 3. TAJUK UTAMA
+    # TAJUK UTAMA
     col_logo, col_text = st.columns([1, 4])
     with col_logo:
         if image_file: st.image(image_file, width=150)
@@ -83,22 +72,76 @@ def main_app():
 
     st.divider()
 
-    # 4. PROSES PETA
+    # PAPARAN PETA DI BELAH KANAN
     try:
         if file_path:
             df = pd.read_csv(file_path)
-            # (Bahagian transformasi koordinat dan plotting dikekalkan...)
-            # Kod ini menggunakan logik rotasi sejajar yang telah kita bincangkan
             
-            # --- PEMBINAAN PETA ---
-            # (Kod peta Folium anda di sini...)
-            st.info("Sistem sedia digunakan oleh Khalid.")
-        else:
-            st.warning("Sila pastikan fail 'point.csv' tersedia untuk memaparkan data.")
-    except Exception as e:
-        st.error(f"Ralat: {e}")
+            # Transformasi Koordinat (Kertau -> WGS84)
+            transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
+            lon, lat = transformer.transform(df['E'].values, df['N'].values)
+            df['lat'], df['lon'] = lat, lon
 
-# --- LOGIK PERALIHAN HALAMAN ---
+            # Cipta Peta Folium
+            m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=22)
+
+            if show_sat:
+                folium.TileLayer(
+                    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                    attr='Google Satellite', name='Google Satellite', overlay=False
+                ).add_to(m)
+
+            # Lukis Poligon & Teks Sejajar
+            for i in range(len(df)):
+                p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
+                
+                # Garisan Kuning
+                folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
+                
+                # Logik Rotasi Sejajar (Berdasarkan Kod Plotly Anda)
+                de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
+                dist = math.sqrt(de**2 + dn**2)
+                line_angle = math.degrees(math.atan2(dn, de))
+                
+                if line_angle > 90: line_angle -= 180
+                elif line_angle < -90: line_angle += 180
+                txt_rot = -line_angle
+
+                # Papar Bearing/Jarak (Sejajar)
+                if show_brng:
+                    mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
+                    brng_val = math.degrees(math.atan2(de, dn))
+                    if brng_val < 0: brng_val += 360
+                    
+                    folium.Marker(
+                        [mid_lat, mid_lon],
+                        icon=folium.DivIcon(
+                            icon_size=(200,40), icon_anchor=(100,20),
+                            html=f"""<div style="transform: rotate({txt_rot}deg); text-align:center;">
+                                     <span style="font-size:{size_brng}pt; color:#00FF00; font-weight:bold; text-shadow:2px 2px 3px black;">
+                                     {int(brng_val)}°{int((brng_val%1)*60)}' | {dist:.3f}m</span></div>"""
+                        )
+                    ).add_to(m)
+
+                if show_stn:
+                    folium.Marker([p1['lat'], p1['lon']], icon=folium.DivIcon(
+                        html=f'<div style="font-size:{size_stn}pt; color:white; font-weight:bold;">{p1["STN"]}</div>'
+                    )).add_to(m)
+
+            # Papar Peta
+            folium_static(m, width=1100, height=600)
+            
+            # Luas
+            if show_poly:
+                luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
+                st.info(f"📐 Luas: {luas:.3f} m²")
+
+        else:
+            st.warning("Sila pastikan fail data sedia ada.")
+    except Exception as e:
+        st.error(f"Ralat Paparan Peta: {e}")
+
+# LOGIK HALAMAN
 if st.session_state['logged_in']:
     main_app()
 else:
