@@ -23,6 +23,7 @@ image_file = find_file(["gmbr_puoR.png", "logo.png"])
 # --- FUNGSI TRANSFORMASI (KERTAU 4390 -> WGS84) ---
 def convert_coords(df):
     try:
+        # EPSG:4390 (Kertau/Johor Grid) ke EPSG:4326 (WGS84 Lat/Lon)
         transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
         e_vals = pd.to_numeric(df['E'], errors='coerce').values
         n_vals = pd.to_numeric(df['N'], errors='coerce').values
@@ -41,6 +42,7 @@ with st.sidebar:
     st.subheader("🎯 Penentukan (Offset)")
     off_n = st.slider("Utara/Selatan (m)", -20.0, 20.0, 0.0)
     off_e = st.slider("Timur/Barat (m)", -20.0, 20.0, 0.0)
+    st.text_input("Kod EPSG", "4390", disabled=True)
 
 # --- TAJUK ---
 col_logo, col_text = st.columns([1, 4])
@@ -56,7 +58,7 @@ st.divider()
 try:
     if file_path:
         df = pd.read_csv(file_path)
-        # Apply Offset
+        # Apply Offset Manual
         df['E'] = pd.to_numeric(df['E']) + off_e
         df['N'] = pd.to_numeric(df['N']) + off_n
         df = convert_coords(df)
@@ -65,10 +67,10 @@ try:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
             
-            # CIPTA PETA LEAFLET (Max Zoom 22 supaya tidak hilang bila zoom in)
+            # CIPTA PETA LEAFLET (Max Zoom 22 supaya imej tidak hilang)
             m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=20, max_zoom=22)
 
-            # GOOGLE HYBRID SATELLITE (Satelit + Label Jalan)
+            # GOOGLE HYBRID SATELLITE (Sangat Stabil untuk Zoom In)
             folium.TileLayer(
                 tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
                 attr='Google Satellite',
@@ -89,16 +91,16 @@ try:
                 # Kira Bearing & Jarak (Geomatik)
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                angle_rad = math.atan2(de, dn)
-                angle_deg = math.degrees(angle_rad)
+                angle_deg = math.degrees(math.atan2(de, dn))
                 bearing = angle_deg if angle_deg >= 0 else angle_deg + 360
                 
-                # Format Bearing & Label
+                # Format Bearing
                 d = int(bearing)
                 m_arc = int((bearing - d) * 60)
                 label_text = f"{d}°{m_arc:02d}' | {dist:.3f}m"
                 
-                # Kira Putaran Teks (Sejajar dengan garisan)
+                # KIRA PUTARAN TEKS SUPAYA SEJAJAR TEPAT
+                # Menggunakan sudut bearing untuk memusingkan DivIcon
                 text_rotation = 90 - angle_deg 
                 if text_rotation > 90: text_rotation -= 180
                 elif text_rotation < -90: text_rotation += 180
@@ -109,8 +111,8 @@ try:
                 folium.Marker(
                     [mid_lat, mid_lon],
                     icon=folium.DivIcon(
-                        icon_size=(200,30),
-                        icon_anchor=(100,15),
+                        icon_size=(250,30),
+                        icon_anchor=(125,15),
                         html=f"""
                         <div style="
                             font-size: 9pt; 
@@ -136,7 +138,7 @@ try:
             # Paparkan Peta
             folium_static(m, width=1100, height=650)
 
-            # 3. METRIK BAWAH
+            # 3. METRIK & JADUAL
             st.divider()
             luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
             c1, c2, c3 = st.columns(3)
@@ -144,6 +146,7 @@ try:
             c2.metric("Luas Tanah", f"{luas:.2f} m²")
             c3.metric("Sesi Pengguna", "Khalid")
 
+            st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], use_container_width=True)
     else:
         st.error("Fail 'point.csv' tidak dijumpai.")
 except Exception as e:
