@@ -67,8 +67,8 @@ def main_app():
         show_brng = st.checkbox("Paparkan Bearing/Jarak", value=True)
         show_poly = st.checkbox("Paparkan Poligon & Luas", value=True)
         
-        # --- FUNGSI PILIH WARNA LOT (BARU) ---
-        lot_color = st.color_picker("Warna Kawasan Lot", "#00FFFF") # Default Biru Cyan seperti gambar
+        # FUNGSI PILIH WARNA LOT
+        lot_color = st.color_picker("Warna Kawasan Lot", "#00FFFF")
         
         st.divider()
         st.markdown("### 🛠️ Tetapan Saiz Teks")
@@ -90,15 +90,10 @@ def main_app():
 
     # PROSES DATA
     try:
-        df = None
+        # Peta hanya akan diproses JIKA ada fail yang dimuat naik
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
-        else:
-            path = find_file(["point.csv", "data_ukur.csv"])
-            if path:
-                df = pd.read_csv(path)
 
-        if df is not None:
             # Transformasi Koordinat
             transformer = Transformer.from_crs(f"EPSG:{epsg_code}", "EPSG:4326", always_xy=True)
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
@@ -154,20 +149,18 @@ def main_app():
                 total_perimeter += math.sqrt((p2['E'] - p1['E'])**2 + (p2['N'] - p1['N'])**2)
 
             if show_poly:
-                # LUKIS POLIGON BERWARNA (Fill Color)
                 folium.Polygon(
                     locations=[[row['lat'], row['lon']] for _, row in df.iterrows()],
                     color=lot_color,
                     weight=0,
                     fill=True,
                     fill_color=lot_color,
-                    fill_opacity=0.4 # Kesan lutsinar supaya satelit nampak
+                    fill_opacity=0.4
                 ).add_to(m)
 
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                     
-                    # BATU LOT DENGAN POPUP
                     popup_html = f"""
                     <div style="font-family: Arial; width: 180px;">
                         <h4 style="margin-bottom:5px; color: #333;">INFO LOT</h4>
@@ -187,10 +180,8 @@ def main_app():
                         popup=folium.Popup(popup_html, max_width=250)
                     ).add_to(m)
                     
-                    # GARISAN SEMPADAN
                     folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                     
-                    # BEARING & JARAK
                     de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                     dist = math.sqrt(de**2 + dn**2)
                     line_angle = math.degrees(math.atan2(dn, de))
@@ -240,9 +231,14 @@ def main_app():
                 """, unsafe_allow_html=True)
 
         else:
-            st.warning("Sila muat naik fail CSV points untuk memaparkan data.")
+            # PAPARAN APABILA FAIL BELUM DIMUAT NAIK
+            st.info("👋 Selamat Datang! Sila muat naik fail CSV points di bar sisi kiri untuk melihat paparan peta dan maklumat lot.")
+            
+            # Tambahan Visual (Opsyenal)
+            st.image("https://img.icons8.com/clouds/200/map.png", width=200)
+
     except Exception as e:
-        st.error(f"Ralat: {e}")
+        st.error(f"Ralat semasa memproses fail: {e}")
 
 if st.session_state['logged_in']:
     main_app()
