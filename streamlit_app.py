@@ -11,8 +11,11 @@ from streamlit_folium import folium_static
 # 1. KONFIGURASI HALAMAN & SESI
 st.set_page_config(page_title="PUO - Unit Geomatik", layout="wide")
 
+# Inisialisasi session state
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
+if 'user_session' not in st.session_state:
+    st.session_state['user_session'] = "Khalid"
 
 # --- FUNGSI LOG MASUK ---
 def login_page():
@@ -20,12 +23,21 @@ def login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
+        
+        # --- FUNGSI MEMILIH SESI (KHALID / SHAH / JA'AR) ---
+        selected_user = st.selectbox(
+            "Pilih Sesi Pengguna",
+            ["Khalid", "SHAH", "JA'AR"]
+        )
+        
         id_input = st.text_input("ID Pengguna", placeholder="Masukkan ID anda")
         pass_input = st.text_input("Kata Laluan", type="password", placeholder="Masukkan kata laluan")
         
         if st.button("Masuk", use_container_width=True):
+            # Logik pengesahan (Contoh: ID dan Pass yang sama untuk semua sesi mengikut kod asal)
             if id_input == "01DGU24F1033" and pass_input == "KHALID123":
                 st.session_state['logged_in'] = True
+                st.session_state['user_session'] = selected_user
                 st.rerun()
             else:
                 st.error("ID atau Kata Laluan Salah!")
@@ -41,7 +53,9 @@ def main_app():
 
     # SIDEBAR (TETAPAN)
     with st.sidebar:
-        st.markdown(f"**Sesi:** <span style='color: #00FF00;'>Khalid</span>", unsafe_allow_html=True)
+        # MEMAPARKAN SESI YANG DIPILIH SECARA DINAMIK
+        st.markdown(f"**Sesi:** <span style='color: #00FF00;'>{st.session_state['user_session']}</span>", unsafe_allow_html=True)
+        
         if st.button("🚪 Log Keluar"):
             st.session_state['logged_in'] = False
             st.rerun()
@@ -90,7 +104,6 @@ def main_app():
 
     # PROSES DATA
     try:
-        # Peta hanya akan diproses JIKA ada fail yang dimuat naik
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
 
@@ -107,7 +120,7 @@ def main_app():
                 "type": "FeatureCollection",
                 "features": [{
                     "type": "Feature",
-                    "properties": {"name": "Lot Survey PUO", "epsg": epsg_code},
+                    "properties": {"name": "Lot Survey PUO", "user": st.session_state['user_session']},
                     "geometry": {
                         "type": "Polygon",
                         "coordinates": [coords_geojson]
@@ -120,7 +133,7 @@ def main_app():
                 st.download_button(
                     label="📥 Muat Turun GeoJSON (QGIS)",
                     data=geojson_str,
-                    file_name="lot_survey_puo.geojson",
+                    file_name=f"lot_{st.session_state['user_session']}.geojson",
                     mime="application/json",
                     use_container_width=True
                 )
@@ -232,9 +245,7 @@ def main_app():
 
         else:
             # PAPARAN APABILA FAIL BELUM DIMUAT NAIK
-            st.info("👋 Selamat Datang! Sila muat naik fail CSV points di bar sisi kiri untuk melihat paparan peta dan maklumat lot.")
-            
-            # Tambahan Visual (Opsyenal)
+            st.info(f"👋 Selamat Datang, {st.session_state['user_session']}! Sila muat naik fail CSV points di bar sisi kiri untuk melihat paparan peta.")
             st.image("https://img.icons8.com/clouds/200/map.png", width=200)
 
     except Exception as e:
