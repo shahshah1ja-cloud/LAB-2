@@ -85,28 +85,30 @@ try:
                 locs = [[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]]
                 folium.PolyLine(locs, color="yellow", weight=3, opacity=1).add_to(m)
                 
-                # Kira Bearing & Jarak (Geomatik)
+                # KIRA BEARING, JARAK DAN SUDUT PUTARAN (SEJAJAR)
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                angle_rad = math.atan2(de, dn) # Arah garisan
-                angle_deg = math.degrees(angle_rad)
-                bearing = angle_deg if angle_deg >= 0 else angle_deg + 360
                 
-                # Format Bearing & Label
-                d = int(bearing)
-                m_arc = int((bearing - d) * 60)
+                # Angle_deg dikira dari paksi Timur (East) mengikut arah lawan jam untuk CSS
+                # Pengiraan bearing geomatik tetap dari arah Utara
+                bearing_rad = math.atan2(de, dn)
+                bearing_deg = math.degrees(bearing_rad)
+                if bearing_deg < 0: bearing_deg += 360
+                
+                # Format Teks: Bearing | Jarak
+                d = int(bearing_deg)
+                m_arc = int((bearing_deg - d) * 60)
                 label_text = f"{d}°{m_arc:02d}' | {dist:.3f}m"
                 
-                # --- LOGIK PUTARAN TEKS SEJAJAR (FIX) ---
-                # Putaran CSS rotate() bermula dari arah mendatar (East)
-                # manakala bearing bermula dari North.
-                text_rotation = 90 - angle_deg 
+                # PENTING: Pengiraan Putaran Teks CSS (Sejajar dengan Garisan)
+                # Teks diputar mengikut sudut garisan agar selari
+                text_rotation = 90 - bearing_deg 
                 
-                # Pastikan teks tidak terbalik (sentiasa boleh dibaca dari bawah/kanan)
+                # Logik supaya teks tidak terbalik (sentiasa boleh dibaca)
                 if text_rotation > 90: text_rotation -= 180
                 elif text_rotation < -90: text_rotation += 180
 
-                # Label Tengah Garisan
+                # Label di Tengah Garisan
                 mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
                 
                 folium.Marker(
@@ -136,7 +138,6 @@ try:
                     radius=5, color='red', fill=True, fill_color='red', fill_opacity=1
                 ).add_to(m)
 
-            # Paparkan Peta
             folium_static(m, width=1100, height=650)
 
             # 3. METRIK BAWAH
