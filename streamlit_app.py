@@ -34,14 +34,6 @@ def convert_coords(df):
         st.error(f"Ralat Transformasi: {e}")
         return df
 
-# --- SIDEBAR (SESI: KHALID) ---
-with st.sidebar:
-    st.markdown(f"**Sesi:** <span style='color: #00FF00;'>Khalid</span>", unsafe_allow_html=True)
-    st.divider()
-    st.subheader("🎯 Penentukan (Offset)")
-    off_n = st.slider("Utara/Selatan (m)", -20.0, 20.0, 0.0)
-    off_e = st.slider("Timur/Barat (m)", -20.0, 20.0, 0.0)
-
 # --- TAJUK ---
 col_logo, col_text = st.columns([1, 4])
 with col_logo:
@@ -56,18 +48,16 @@ st.divider()
 try:
     if file_path:
         df = pd.read_csv(file_path)
-        df['E'] = pd.to_numeric(df['E']) + off_e
-        df['N'] = pd.to_numeric(df['N']) + off_n
         df = convert_coords(df)
         
         if not df.empty:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
             
-            # CIPTA PETA LEAFLET (Max Zoom 22 supaya imej tidak hilang)
+            # CIPTA PETA (Max Zoom 22 supaya imej satelit tidak hilang)
             m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=20, max_zoom=22)
 
-            # GOOGLE HYBRID SATELLITE (Sangat Stabil untuk Zoom In)
+            # GOOGLE HYBRID SATELLITE
             folium.TileLayer(
                 tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
                 attr='Google Satellite',
@@ -85,26 +75,20 @@ try:
                 locs = [[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]]
                 folium.PolyLine(locs, color="yellow", weight=3, opacity=1).add_to(m)
                 
-                # KIRA BEARING, JARAK DAN SUDUT PUTARAN (SEJAJAR)
+                # Kira Bearing & Jarak
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                
-                # Angle_deg dikira dari paksi Timur (East) mengikut arah lawan jam untuk CSS
-                # Pengiraan bearing geomatik tetap dari arah Utara
                 bearing_rad = math.atan2(de, dn)
                 bearing_deg = math.degrees(bearing_rad)
                 if bearing_deg < 0: bearing_deg += 360
                 
-                # Format Teks: Bearing | Jarak
-                d = int(bearing_deg)
-                m_arc = int((bearing_deg - d) * 60)
-                label_text = f"{d}°{m_arc:02d}' | {dist:.3f}m"
+                label_text = f"{int(bearing_deg)}°{int((bearing_deg%1)*60):02d}' | {dist:.3f}m"
                 
-                # PENTING: Pengiraan Putaran Teks CSS (Sejajar dengan Garisan)
-                # Teks diputar mengikut sudut garisan agar selari
+                # --- FORMULA PUTARAN TEKS (SEJAJAR GARISAN) ---
+                # 90 - bearing_deg menukarkan sudut kompas ke sudut CSS
                 text_rotation = 90 - bearing_deg 
                 
-                # Logik supaya teks tidak terbalik (sentiasa boleh dibaca)
+                # Supaya tulisan tidak terbalik (Readable)
                 if text_rotation > 90: text_rotation -= 180
                 elif text_rotation < -90: text_rotation += 180
 
@@ -118,13 +102,14 @@ try:
                         icon_anchor=(125,15),
                         html=f"""
                         <div style="
-                            font-size: 9pt; 
+                            font-size: 10pt; 
                             color: #00FF00; 
                             font-weight: bold; 
                             text-align: center; 
                             white-space: nowrap;
                             transform: rotate({text_rotation}deg);
-                            text-shadow: 2px 2px 4px black;">
+                            transform-origin: center;
+                            text-shadow: 2px 2px 3px black;">
                             {label_text}
                         </div>
                         """
@@ -135,20 +120,18 @@ try:
             for _, row in df.iterrows():
                 folium.CircleMarker(
                     location=[row['lat'], row['lon']],
-                    radius=5, color='red', fill=True, fill_color='red', fill_opacity=1
+                    radius=5, color='red', fill=True, fill_color='red'
                 ).add_to(m)
 
             folium_static(m, width=1100, height=650)
 
             # 3. METRIK BAWAH
             st.divider()
-            luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
             c1, c2, c3 = st.columns(3)
             c1.metric("Bil. Stesen", len(df))
-            c2.metric("Luas Tanah", f"{luas:.2f} m²")
             c3.metric("Sesi Pengguna", "Khalid")
 
     else:
-        st.error("Fail 'point.csv' tidak dijumpai.")
+        st.error("Fail data tidak dijumpai.")
 except Exception as e:
     st.error(f"Ralat: {e}")
