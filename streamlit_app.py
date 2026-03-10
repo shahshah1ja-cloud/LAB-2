@@ -64,10 +64,10 @@ try:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
             
-            # CIPTA PETA LEAFLET (Max Zoom 22 supaya imej satelit tidak hilang)
+            # CIPTA PETA LEAFLET (Max Zoom 22 supaya imej tidak hilang)
             m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=20, max_zoom=22)
 
-            # GOOGLE HYBRID (Satelit + Jalan) - lyrs=y adalah kunci untuk zoom tinggi
+            # GOOGLE HYBRID SATELLITE (Sangat Stabil untuk Zoom In)
             folium.TileLayer(
                 tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
                 attr='Google Satellite',
@@ -81,23 +81,32 @@ try:
                 p1 = df.iloc[i]
                 p2 = df.iloc[(i + 1) % len(df)]
                 
+                # Garisan Lot (Kuning)
                 locs = [[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]]
                 folium.PolyLine(locs, color="yellow", weight=3, opacity=1).add_to(m)
                 
-                # Kira Bearing & Jarak
+                # Kira Bearing & Jarak (Geomatik)
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                angle_deg = math.degrees(math.atan2(de, dn))
+                angle_rad = math.atan2(de, dn) # Arah garisan
+                angle_deg = math.degrees(angle_rad)
                 bearing = angle_deg if angle_deg >= 0 else angle_deg + 360
                 
-                # Format Teks
-                label_text = f"{int(bearing)}°{int((bearing%1)*60):02d}' | {dist:.3f}m"
+                # Format Bearing & Label
+                d = int(bearing)
+                m_arc = int((bearing - d) * 60)
+                label_text = f"{d}°{m_arc:02d}' | {dist:.3f}m"
                 
-                # PUTARAN TEKS SEJAJAR TEPAT (90 - sudut bearing)
+                # --- LOGIK PUTARAN TEKS SEJAJAR (FIX) ---
+                # Putaran CSS rotate() bermula dari arah mendatar (East)
+                # manakala bearing bermula dari North.
                 text_rotation = 90 - angle_deg 
+                
+                # Pastikan teks tidak terbalik (sentiasa boleh dibaca dari bawah/kanan)
                 if text_rotation > 90: text_rotation -= 180
                 elif text_rotation < -90: text_rotation += 180
 
+                # Label Tengah Garisan
                 mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
                 
                 folium.Marker(
@@ -105,16 +114,29 @@ try:
                     icon=folium.DivIcon(
                         icon_size=(250,30),
                         icon_anchor=(125,15),
-                        html=f"""<div style="font-size: 9pt; color: #00FF00; font-weight: bold; text-align: center; 
-                                 white-space: nowrap; transform: rotate({text_rotation}deg); 
-                                 text-shadow: 2px 2px 4px black;">{label_text}</div>"""
+                        html=f"""
+                        <div style="
+                            font-size: 9pt; 
+                            color: #00FF00; 
+                            font-weight: bold; 
+                            text-align: center; 
+                            white-space: nowrap;
+                            transform: rotate({text_rotation}deg);
+                            text-shadow: 2px 2px 4px black;">
+                            {label_text}
+                        </div>
+                        """
                     )
                 ).add_to(m)
 
-            # MARKER MERAH
+            # MARKER STESEN (MERAH)
             for _, row in df.iterrows():
-                folium.CircleMarker(location=[row['lat'], row['lon']], radius=5, color='red', fill=True, fill_color='red').add_to(m)
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=5, color='red', fill=True, fill_color='red', fill_opacity=1
+                ).add_to(m)
 
+            # Paparkan Peta
             folium_static(m, width=1100, height=650)
 
             # 3. METRIK BAWAH
@@ -126,6 +148,6 @@ try:
             c3.metric("Sesi Pengguna", "Khalid")
 
     else:
-        st.error("Fail data tidak dijumpai.")
+        st.error("Fail 'point.csv' tidak dijumpai.")
 except Exception as e:
     st.error(f"Ralat: {e}")
