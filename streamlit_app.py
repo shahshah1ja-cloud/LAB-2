@@ -51,7 +51,7 @@ def main_app():
         show_sat = st.toggle("Paparkan Imej Satelit", value=True)
         show_stn = st.checkbox("Paparkan No Stesen", value=True)
         show_brng = st.checkbox("Paparkan Bearing/Jarak", value=True)
-        show_poly = st.checkbox("Paparkan Poligon & Luas", value=True) # Suis Utama
+        show_poly = st.checkbox("Paparkan Poligon & Luas", value=True)
         
         st.divider()
         st.markdown("### 🛠️ Tetapan Saiz Teks")
@@ -81,7 +81,6 @@ def main_app():
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
-            # Peta Folium dengan Kawalan Zoom Pintar
             m = folium.Map(
                 location=[df['lat'].mean(), df['lon'].mean()], 
                 zoom_start=20, 
@@ -92,41 +91,55 @@ def main_app():
             if show_sat:
                 folium.TileLayer(
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                    attr='Google Satellite',
-                    name='Google Satellite',
-                    max_zoom=25,
-                    max_native_zoom=20, # Membaiki isu zoom hilang
-                    overlay=False,
-                    control=False
+                    attr='Google Satellite', name='Google Satellite',
+                    max_zoom=25, max_native_zoom=20, overlay=False, control=False
                 ).add_to(m)
 
             total_perimeter = 0
+            # Kira Luas terlebih dahulu untuk kegunaan Popup
+            luas_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
+            
+            # Kira Total Perimeter
+            for i in range(len(df)):
+                p1 = df.iloc[i]
+                p2 = df.iloc[(i + 1) % len(df)]
+                total_perimeter += math.sqrt((p2['E'] - p1['E'])**2 + (p2['N'] - p1['N'])**2)
 
-            # Hanya lukis komponen lot jika show_poly diaktifkan
             if show_poly:
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                     
-                    # Batu Sempadan (Bucu Merah)
+                    # 1. BATU LOT DENGAN POPUP INFO
+                    popup_html = f"""
+                    <div style="font-family: Arial; width: 180px;">
+                        <h4 style="margin-bottom:5px; color: #333;">INFO LOT</h4>
+                        <hr style="margin: 5px 0;">
+                        <b>Luas:</b> {luas_val:.3f} m²<br>
+                        <b>Perimeter:</b> {total_perimeter:.3f} m<br>
+                        <hr style="margin: 5px 0;">
+                        <b>Koordinat Stesen {int(float(p1['STN']))}:</b><br>
+                        N: {p1['N']:.3f}<br>
+                        E: {p1['E']:.3f}
+                    </div>
+                    """
+                    
                     folium.CircleMarker(
-                        location=[p1['lat'], p1['lon']], radius=4,
-                        color='red', fill=True, fill_color='red', fill_opacity=1
+                        location=[p1['lat'], p1['lon']], radius=5,
+                        color='red', fill=True, fill_color='red', fill_opacity=1,
+                        popup=folium.Popup(popup_html, max_width=250)
                     ).add_to(m)
                     
-                    # Garisan Sempadan Kuning
+                    # 2. GARISAN SEMPADAN
                     folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                     
-                    # Logik Rotasi Sejajar & Jarak
+                    # 3. BEARING & JARAK (SEJAJAR)
                     de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                     dist = math.sqrt(de**2 + dn**2)
-                    total_perimeter += dist
-                    
                     line_angle = math.degrees(math.atan2(dn, de))
                     if line_angle > 90: line_angle -= 180
                     elif line_angle < -90: line_angle += 180
                     txt_rot = -line_angle
 
-                    # Papar Bearing/Jarak Sejajar jika ON
                     if show_brng:
                         mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
                         brng_val = math.degrees(math.atan2(de, dn))
@@ -142,11 +155,9 @@ def main_app():
                             )
                         ).add_to(m)
 
-                    # Papar No Stesen
                     if show_stn:
                         try: stn_label = int(float(p1['STN']))
                         except: stn_label = p1['STN']
-                            
                         folium.Marker(
                             [p1['lat'], p1['lon']], 
                             icon=folium.DivIcon(
@@ -157,15 +168,11 @@ def main_app():
 
             folium_static(m, width=1100, height=600)
             
-            # PAPARAN METRIK BAWAH PETA
-            # Kotak ini hanya muncul jika 'Paparkan Poligon & Luas' diaktifkan
             if show_poly:
-                luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-                
                 # Box Luas (Hijau)
                 st.markdown(f"""
                 <div style="background-color: #1e3d2f; padding: 15px; border-radius: 10px; border-left: 5px solid #00FF00; margin-bottom: 10px;">
-                    <span style="color: #00FF00; font-size: 20px; font-weight: bold;">📐 Luas: {luas:.3f} m²</span>
+                    <span style="color: #00FF00; font-size: 20px; font-weight: bold;">📐 Luas: {luas_val:.3f} m²</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -181,7 +188,6 @@ def main_app():
     except Exception as e:
         st.error(f"Ralat: {e}")
 
-# LOGIK HALAMAN
 if st.session_state['logged_in']:
     main_app()
 else:
