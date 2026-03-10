@@ -31,7 +31,6 @@ def login_page():
 
 # --- FUNGSI UTAMA APLIKASI ---
 def main_app():
-    # Fungsi Cari Fail
     def find_file(variants):
         for v in variants:
             if os.path.exists(v): return v
@@ -72,17 +71,16 @@ def main_app():
 
     st.divider()
 
-    # PAPARAN PETA DI BELAH KANAN
+    # PAPARAN PETA
     try:
         if file_path:
             df = pd.read_csv(file_path)
             
-            # Transformasi Koordinat (Kertau -> WGS84)
+            # Transformasi Koordinat
             transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
-            # Cipta Peta Folium
             m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=22)
 
             if show_sat:
@@ -91,14 +89,23 @@ def main_app():
                     attr='Google Satellite', name='Google Satellite', overlay=False
                 ).add_to(m)
 
-            # Lukis Poligon & Teks Sejajar
             for i in range(len(df)):
                 p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                 
-                # Garisan Kuning
+                # 1. LUKIS BATU (BULATAN MERAH KECIL PADA BUCU)
+                folium.CircleMarker(
+                    location=[p1['lat'], p1['lon']],
+                    radius=4,
+                    color='red',
+                    fill=True,
+                    fill_color='red',
+                    fill_opacity=1
+                ).add_to(m)
+                
+                # 2. LUKIS GARISAN SEMPADAN
                 folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                 
-                # Logik Rotasi Sejajar (Berdasarkan Kod Plotly Anda)
+                # 3. PENGIRAAN BEARING & JARAK (SEJAJAR)
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
                 line_angle = math.degrees(math.atan2(dn, de))
@@ -107,7 +114,6 @@ def main_app():
                 elif line_angle < -90: line_angle += 180
                 txt_rot = -line_angle
 
-                # Papar Bearing/Jarak (Sejajar)
                 if show_brng:
                     mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
                     brng_val = math.degrees(math.atan2(de, dn))
@@ -123,25 +129,33 @@ def main_app():
                         )
                     ).add_to(m)
 
+                # 4. PAPAR NO STESEN (NOMBOR BULAT SAHAJA)
                 if show_stn:
-                    folium.Marker([p1['lat'], p1['lon']], icon=folium.DivIcon(
-                        html=f'<div style="font-size:{size_stn}pt; color:white; font-weight:bold;">{p1["STN"]}</div>'
-                    )).add_to(m)
+                    try:
+                        # Menukar "1.0" kepada "1" dengan int(float())
+                        stn_label = int(float(p1['STN']))
+                    except:
+                        stn_label = p1['STN']
+                        
+                    folium.Marker(
+                        [p1['lat'], p1['lon']], 
+                        icon=folium.DivIcon(
+                            icon_anchor=(-10, 10),
+                            html=f'<div style="font-size:{size_stn}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{stn_label}</div>'
+                        )
+                    ).add_to(m)
 
-            # Papar Peta
             folium_static(m, width=1100, height=600)
             
-            # Luas
             if show_poly:
                 luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
                 st.info(f"📐 Luas: {luas:.3f} m²")
 
         else:
-            st.warning("Sila pastikan fail data sedia ada.")
+            st.warning("Fail data tidak dijumpai.")
     except Exception as e:
-        st.error(f"Ralat Paparan Peta: {e}")
+        st.error(f"Ralat: {e}")
 
-# LOGIK HALAMAN
 if st.session_state['logged_in']:
     main_app()
 else:
