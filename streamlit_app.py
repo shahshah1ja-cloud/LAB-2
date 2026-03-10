@@ -43,17 +43,21 @@ def main_app():
 
     image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
+    # SIDEBAR (TETAPAN)
     with st.sidebar:
         st.markdown(f"**Sesi:** <span style='color: #00FF00;'>{st.session_state['user_session']}</span>", unsafe_allow_html=True)
         if st.button("🚪 Log Keluar"):
             st.session_state['logged_in'] = False
             st.rerun()
+            
         st.divider()
         st.markdown("### 📂 Muat Naik Data")
         uploaded_file = st.file_uploader("Pilih fail CSV points", type=["csv"])
+        
         st.divider()
         st.markdown("### 🌍 Eksport ke QGIS")
         export_placeholder = st.empty()
+
         st.divider()
         st.markdown("### 👁️ Kawalan Paparan")
         show_sat = st.toggle("Paparkan Imej Satelit", value=True)
@@ -61,19 +65,23 @@ def main_app():
         show_brng = st.checkbox("Paparkan Bearing/Jarak", value=True)
         show_poly = st.checkbox("Paparkan Poligon & Luas", value=True)
         lot_color = st.color_picker("Warna Kawasan Lot", "#00FFFF")
+        
         st.divider()
         st.markdown("### 🛠️ Tetapan Saiz Teks")
         size_stn = st.slider("Saiz No Stesen", 8, 20, 12)
         size_brng = st.slider("Saiz Bearing/Jarak", 8, 20, 10)
+        
         st.divider()
         epsg_code = st.text_input("Kod EPSG", value="4390")
 
+    # TAJUK UTAMA
     col_logo, col_text = st.columns([1, 4])
     with col_logo:
         if image_file: st.image(image_file, width=150)
     with col_text:
         st.markdown("<h1 style='color: white; margin-bottom:0;'>POLITEKNIK UNGKU OMAR</h1>", unsafe_allow_html=True)
         st.markdown("<h3 style='color: #00FF00; margin-top:0;'>Jabatan Kejuruteraan Awam - Unit Geomatik</h3>", unsafe_allow_html=True)
+
     st.divider()
 
     try:
@@ -83,39 +91,56 @@ def main_app():
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
-            # --- LOGIK DATA UNTUK QGIS (GEOJSON) ---
+            # KIRA DATA TEKNIKAL UNTUK QGIS
             total_perimeter = 0
-            lines_info = []
-            for i in range(len(df)):
-                p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
-                de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
-                d = math.sqrt(de**2 + dn**2)
-                total_perimeter += d
-                b = math.degrees(math.atan2(de, dn))
-                if b < 0: b += 360
-                lines_info.append(f"S{int(p1['STN'])}-S{int(p2['STN'])}: {int(b)}°{int((b%1)*60)}' | {d:.3f}m")
-
             luas_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-            coords_geojson = [[row['lon'], row['lat']] for _, row in df.iterrows()]
-            coords_geojson.append(coords_geojson[0]) 
             
-            # Memasukkan maklumat ke dalam GeoJSON Properties
-            geojson_data = {
-                "type": "FeatureCollection",
-                "features": [{
+            # --- PENYEDIAAN GEOJSON LANJUTAN UNTUK QGIS LABELS ---
+            features = []
+            coords_poly = []
+            
+            for i in range(len(df)):
+                p1 = df.iloc[i]
+                p2 = df.iloc[(i + 1) % len(df)]
+                
+                # Kira Bearing & Jarak
+                de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
+                dist = math.sqrt(de**2 + dn**2)
+                total_perimeter += dist
+                brng_deg = math.degrees(math.atan2(de, dn))
+                if brng_deg < 0: brng_deg += 360
+                brng_fmt = f"{int(brng_deg)}°{int((brng_deg%1)*60)}'"
+                
+                coords_poly.append([p1['lon'], p1['lat']])
+
+                # Simpan Point sebagai Feature (Stesen & Koordinat)
+                features.append({
                     "type": "Feature",
                     "properties": {
-                        "Sesi": st.session_state['user_session'],
-                        "Luas_m2": round(luas_val, 3),
-                        "Perimeter_m": round(total_perimeter, 3),
-                        "Bearing_Jarak": " | ".join(lines_info),
-                        "Koordinat_List": df[['STN','N','E']].to_dict('records')
+                        "Stesen": str(p1['STN']),
+                        "Utara_N": round(p1['N'], 3),
+                        "Timur_E": round(p1['E'], 3),
+                        "Label_Koordinat": f"N: {p1['N']:.3f}\nE: {p1['E']:.3f}"
                     },
-                    "geometry": {"type": "Polygon", "coordinates": [coords_geojson]}
-                }]
-            }
-            
+                    "geometry": {"type": "Point", "coordinates": [p1['lon'], p1['lat']]}
+                })
+
+            # Simpan Poligon sebagai satu Feature (Luas & Perimeter)
+            coords_poly.append(coords_poly[0])
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "Sesi": st.session_state['user_session'],
+                    "Luas_m2": round(luas_val, 3),
+                    "Perimeter_m": round(total_perimeter, 3),
+                    "Label_Info": f"Luas: {luas_val:.3f} m²\nPerim: {total_perimeter:.3f} m"
+                },
+                "geometry": {"type": "Polygon", "coordinates": [coords_poly]}
+            })
+
+            geojson_data = {"type": "FeatureCollection", "features": features}
             geojson_str = json.dumps(geojson_data)
+            
             with export_placeholder:
                 st.download_button(
                     label="📥 Muat Turun GeoJSON (QGIS)",
@@ -125,8 +150,8 @@ def main_app():
                     use_container_width=True
                 )
 
-            # --- BINA PETA FOLIUM ---
-            m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=25)
+            # BINA PETA FOLIUM
+            m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=25, control_scale=True)
             if show_sat:
                 folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google Satellite', name='Google Satellite', max_zoom=25, max_native_zoom=20, overlay=False, control=False).add_to(m)
 
@@ -134,27 +159,34 @@ def main_app():
                 folium.Polygon(locations=[[row['lat'], row['lon']] for _, row in df.iterrows()], color=lot_color, weight=0, fill=True, fill_color=lot_color, fill_opacity=0.4).add_to(m)
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
-                    popup_html = f"<b>INFO LOT</b><br>Luas: {luas_val:.3f} m²<br>Perimeter: {total_perimeter:.3f} m<br><hr>STN {int(p1['STN'])}<br>N: {p1['N']:.3f}<br>E: {p1['E']:.3f}"
-                    folium.CircleMarker(location=[p1['lat'], p1['lon']], radius=5, color='red', fill=True, fill_color='red', popup=folium.Popup(popup_html, max_width=200)).add_to(m)
+                    popup_html = f"<div style='width:150px;'><b>INFO LOT</b><hr>Luas: {luas_val:.3f}m²<br>Perim: {total_perimeter:.3f}m<hr>STN {int(float(p1['STN']))}<br>N: {p1['N']:.3f}<br>E: {p1['E']:.3f}</div>"
+                    folium.CircleMarker(location=[p1['lat'], p1['lon']], radius=5, color='red', fill=True, fill_color='red', fill_opacity=1, popup=folium.Popup(popup_html, max_width=250)).add_to(m)
                     folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                     
                     de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                     dist = math.sqrt(de**2 + dn**2)
-                    brng_val = math.degrees(math.atan2(de, dn))
-                    if brng_val < 0: brng_val += 360
+                    line_angle = math.degrees(math.atan2(dn, de))
+                    if line_angle > 90: line_angle -= 180
+                    elif line_angle < -90: line_angle += 180
                     
                     if show_brng:
                         mid_lat, mid_lon = (p1['lat'] + p2['lat'])/2, (p1['lon'] + p2['lon'])/2
-                        folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(icon_size=(200,40), icon_anchor=(100,20), html=f'<div style="color:#00FF00; font-weight:bold; text-shadow:2px 2px 3px black; font-size:{size_brng}pt;">{int(brng_val)}°{int((brng_val%1)*60)}\' | {dist:.3f}m</div>')).add_to(m)
+                        brng_v = math.degrees(math.atan2(de, dn))
+                        if brng_v < 0: brng_v += 360
+                        folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(icon_size=(200,40), icon_anchor=(100,20), html=f"<div style='transform: rotate({-line_angle}deg); text-align:center;'><span style='font-size:{size_brng}pt; color:#00FF00; font-weight:bold; text-shadow:2px 2px 3px black;'>{int(brng_v)}°{int((brng_v%1)*60)}' | {dist:.3f}m</span></div>")).add_to(m)
+
                     if show_stn:
-                        folium.Marker([p1['lat'], p1['lon']], icon=folium.DivIcon(icon_anchor=(-10, 10), html=f'<div style="font-size:{size_stn}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(p1["STN"])}</div>')).add_to(m)
+                        folium.Marker([p1['lat'], p1['lon']], icon=folium.DivIcon(icon_anchor=(-10, 10), html=f'<div style="font-size:{size_stn}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(float(p1["STN"]))}</div>')).add_to(m)
 
             folium_static(m, width=1100, height=600)
+            
             if show_poly:
-                st.success(f"📐 Luas: {luas_val:.3f} m² | 📏 Perimeter: {total_perimeter:.3f} m")
+                st.markdown(f"<div style='background-color:#1e3d2f; padding:15px; border-radius:10px; border-left:5px solid #00FF00; margin-bottom:10px;'><span style='color:#00FF00; font-size:20px; font-weight:bold;'>📐 Luas: {luas_val:.3f} m²</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color:#1b2e3e; padding:15px; border-radius:10px; border-left:5px solid #3498db;'><span style='color:#3498db; font-size:20px; font-weight:bold;'>📏 Perimeter: {total_perimeter:.3f} m</span></div>", unsafe_allow_html=True)
 
         else:
-            st.info(f"👋 Selamat Datang, {st.session_state['user_session']}! Sila muat naik fail CSV points.")
+            st.info(f"👋 Selamat Datang, {st.session_state['user_session']}! Sila muat naik fail CSV points di bar sisi kiri.")
+            st.image("https://img.icons8.com/clouds/200/map.png", width=200)
     except Exception as e:
         st.error(f"Ralat: {e}")
 
