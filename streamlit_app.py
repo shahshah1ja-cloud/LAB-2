@@ -36,7 +36,6 @@ def main_app():
             if os.path.exists(v): return v
         return None
 
-    file_path = find_file(["point.csv", "data_ukur.csv"])
     image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
     # SIDEBAR (TETAPAN)
@@ -46,6 +45,12 @@ def main_app():
             st.session_state['logged_in'] = False
             st.rerun()
             
+        st.divider()
+        
+        # --- FUNGSI UPLOAD CSV (BARU) ---
+        st.markdown("### 📂 Muat Naik Data")
+        uploaded_file = st.file_input("Pilih fail CSV points", type=["csv"])
+        
         st.divider()
         st.markdown("### 👁️ Kawalan Paparan")
         show_sat = st.toggle("Paparkan Imej Satelit", value=True)
@@ -59,7 +64,7 @@ def main_app():
         size_brng = st.slider("Saiz Bearing/Jarak", 8, 20, 10)
         
         st.divider()
-        st.text_input("Kod EPSG", value="4390")
+        epsg_code = st.text_input("Kod EPSG", value="4390")
 
     # TAJUK UTAMA
     col_logo, col_text = st.columns([1, 4])
@@ -71,13 +76,20 @@ def main_app():
 
     st.divider()
 
-    # PAPARAN PETA
+    # PROSES DATA
     try:
-        if file_path:
-            df = pd.read_csv(file_path)
-            
+        df = None
+        # Gunakan fail yang dimuat naik jika ada, jika tidak cari fail lokal
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+        else:
+            path = find_file(["point.csv", "data_ukur.csv"])
+            if path:
+                df = pd.read_csv(path)
+
+        if df is not None:
             # Transformasi Koordinat
-            transformer = Transformer.from_crs("EPSG:4390", "EPSG:4326", always_xy=True)
+            transformer = Transformer.from_crs(f"EPSG:{epsg_code}", "EPSG:4326", always_xy=True)
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
@@ -96,10 +108,8 @@ def main_app():
                 ).add_to(m)
 
             total_perimeter = 0
-            # Kira Luas terlebih dahulu untuk kegunaan Popup
             luas_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
             
-            # Kira Total Perimeter
             for i in range(len(df)):
                 p1 = df.iloc[i]
                 p2 = df.iloc[(i + 1) % len(df)]
@@ -109,7 +119,7 @@ def main_app():
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                     
-                    # 1. BATU LOT DENGAN POPUP INFO
+                    # 1. BATU LOT DENGAN POPUP INFO (Termasuk Koordinat)
                     popup_html = f"""
                     <div style="font-family: Arial; width: 180px;">
                         <h4 style="margin-bottom:5px; color: #333;">INFO LOT</h4>
@@ -184,7 +194,7 @@ def main_app():
                 """, unsafe_allow_html=True)
 
         else:
-            st.warning("Fail data tidak dijumpai.")
+            st.warning("Sila muat naik fail CSV points untuk memaparkan data.")
     except Exception as e:
         st.error(f"Ralat: {e}")
 
