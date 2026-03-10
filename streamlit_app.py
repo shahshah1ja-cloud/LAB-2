@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import math
 import os
+import json
 from pyproj import Transformer
 import folium
 from streamlit_folium import folium_static
@@ -47,10 +48,17 @@ def main_app():
             
         st.divider()
         
-        # --- FUNGSI UPLOAD CSV (DIPERBAIKI) ---
+        # MUAT NAIK DATA
         st.markdown("### 📂 Muat Naik Data")
         uploaded_file = st.file_uploader("Pilih fail CSV points", type=["csv"])
         
+        st.divider()
+
+        # --- FUNGSI EXPORT GEOJSON (BARU) ---
+        st.markdown("### 🌍 Eksport ke QGIS")
+        # Placeholder untuk butang download (akan diaktifkan jika data wujud)
+        export_placeholder = st.empty()
+
         st.divider()
         st.markdown("### 👁️ Kawalan Paparan")
         show_sat = st.toggle("Paparkan Imej Satelit", value=True)
@@ -92,6 +100,33 @@ def main_app():
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
+            # --- PENYEDIAAN GEOJSON UNTUK QGIS ---
+            coords_geojson = [[row['lon'], row['lat']] for _, row in df.iterrows()]
+            coords_geojson.append(coords_geojson[0]) # Tutup poligon
+            
+            geojson_data = {
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "properties": {"name": "Lot Survey PUO", "epsg": epsg_code},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [coords_geojson]
+                    }
+                }]
+            }
+            
+            geojson_str = json.dumps(geojson_data)
+            with export_placeholder:
+                st.download_button(
+                    label="📥 Muat Turun GeoJSON (QGIS)",
+                    data=geojson_str,
+                    file_name="lot_survey_puo.geojson",
+                    mime="application/json",
+                    use_container_width=True
+                )
+
+            # BINA PETA
             m = folium.Map(
                 location=[df['lat'].mean(), df['lon'].mean()], 
                 zoom_start=20, 
@@ -158,8 +193,8 @@ def main_app():
                                 html=f"""<div style="transform: rotate({txt_rot}deg); text-align:center;">
                                          <span style="font-size:{size_brng}pt; color:#00FF00; font-weight:bold; text-shadow:2px 2px 3px black;">
                                          {int(brng_val)}°{int((brng_val%1)*60)}' | {dist:.3f}m</span></div>"""
-                            )
-                        ).add_to(m)
+                        )
+                    ).add_to(m)
 
                     if show_stn:
                         try: stn_label = int(float(p1['STN']))
