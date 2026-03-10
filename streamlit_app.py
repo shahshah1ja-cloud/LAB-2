@@ -54,17 +54,21 @@ def main_app():
         
         st.divider()
 
-        # --- FUNGSI EXPORT GEOJSON (BARU) ---
+        # EKSPORT GEOJSON
         st.markdown("### 🌍 Eksport ke QGIS")
-        # Placeholder untuk butang download (akan diaktifkan jika data wujud)
         export_placeholder = st.empty()
 
         st.divider()
+
+        # KAWALAN PAPARAN
         st.markdown("### 👁️ Kawalan Paparan")
         show_sat = st.toggle("Paparkan Imej Satelit", value=True)
         show_stn = st.checkbox("Paparkan No Stesen", value=True)
         show_brng = st.checkbox("Paparkan Bearing/Jarak", value=True)
         show_poly = st.checkbox("Paparkan Poligon & Luas", value=True)
+        
+        # --- FUNGSI PILIH WARNA LOT (BARU) ---
+        lot_color = st.color_picker("Warna Kawasan Lot", "#00FFFF") # Default Biru Cyan seperti gambar
         
         st.divider()
         st.markdown("### 🛠️ Tetapan Saiz Teks")
@@ -100,9 +104,9 @@ def main_app():
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
-            # --- PENYEDIAAN GEOJSON UNTUK QGIS ---
+            # PENYEDIAAN GEOJSON
             coords_geojson = [[row['lon'], row['lat']] for _, row in df.iterrows()]
-            coords_geojson.append(coords_geojson[0]) # Tutup poligon
+            coords_geojson.append(coords_geojson[0]) 
             
             geojson_data = {
                 "type": "FeatureCollection",
@@ -150,9 +154,20 @@ def main_app():
                 total_perimeter += math.sqrt((p2['E'] - p1['E'])**2 + (p2['N'] - p1['N'])**2)
 
             if show_poly:
+                # LUKIS POLIGON BERWARNA (Fill Color)
+                folium.Polygon(
+                    locations=[[row['lat'], row['lon']] for _, row in df.iterrows()],
+                    color=lot_color,
+                    weight=0,
+                    fill=True,
+                    fill_color=lot_color,
+                    fill_opacity=0.4 # Kesan lutsinar supaya satelit nampak
+                ).add_to(m)
+
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                     
+                    # BATU LOT DENGAN POPUP
                     popup_html = f"""
                     <div style="font-family: Arial; width: 180px;">
                         <h4 style="margin-bottom:5px; color: #333;">INFO LOT</h4>
@@ -172,8 +187,10 @@ def main_app():
                         popup=folium.Popup(popup_html, max_width=250)
                     ).add_to(m)
                     
+                    # GARISAN SEMPADAN
                     folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                     
+                    # BEARING & JARAK
                     de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                     dist = math.sqrt(de**2 + dn**2)
                     line_angle = math.degrees(math.atan2(dn, de))
