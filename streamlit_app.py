@@ -39,7 +39,7 @@ def main_app():
     file_path = find_file(["point.csv", "data_ukur.csv"])
     image_file = find_file(["gmbr_puoR.png", "logo.png"])
 
-    # SIDEBAR (TETAPAN BELAH KIRI)
+    # SIDEBAR (TETAPAN)
     with st.sidebar:
         st.markdown(f"**Sesi:** <span style='color: #00FF00;'>Khalid</span>", unsafe_allow_html=True)
         if st.button("🚪 Log Keluar"):
@@ -81,35 +81,47 @@ def main_app():
             lon, lat = transformer.transform(df['E'].values, df['N'].values)
             df['lat'], df['lon'] = lat, lon
 
-            m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=22)
+            # MEMBAIKI ISU ZOOM: max_zoom ditetapkan tinggi, zoom_control ditambah
+            m = folium.Map(
+                location=[df['lat'].mean(), df['lon'].mean()], 
+                zoom_start=20, 
+                max_zoom=25,
+                control_scale=True
+            )
 
             if show_sat:
+                # lyrs=s (Satelit Sahaja) atau lyrs=y (Hybrid)
+                # max_native_zoom memastikan imej tidak hilang jika zoom terlalu dekat
                 folium.TileLayer(
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                    attr='Google Satellite', name='Google Satellite', overlay=False
+                    attr='Google Satellite',
+                    name='Google Satellite',
+                    max_zoom=25,
+                    max_native_zoom=20,
+                    overlay=False,
+                    control=False
                 ).add_to(m)
+
+            total_perimeter = 0
 
             for i in range(len(df)):
                 p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                 
-                # 1. LUKIS BATU (BULATAN MERAH KECIL PADA BUCU)
+                # Batu Sempadan
                 folium.CircleMarker(
-                    location=[p1['lat'], p1['lon']],
-                    radius=4,
-                    color='red',
-                    fill=True,
-                    fill_color='red',
-                    fill_opacity=1
+                    location=[p1['lat'], p1['lon']], radius=4,
+                    color='red', fill=True, fill_color='red', fill_opacity=1
                 ).add_to(m)
                 
-                # 2. LUKIS GARISAN SEMPADAN
+                # Garisan Sempadan
                 folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                 
-                # 3. PENGIRAAN BEARING & JARAK (SEJAJAR)
+                # Pengiraan Jarak & Rotasi Sejajar
                 de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                 dist = math.sqrt(de**2 + dn**2)
-                line_angle = math.degrees(math.atan2(dn, de))
+                total_perimeter += dist
                 
+                line_angle = math.degrees(math.atan2(dn, de))
                 if line_angle > 90: line_angle -= 180
                 elif line_angle < -90: line_angle += 180
                 txt_rot = -line_angle
@@ -129,13 +141,9 @@ def main_app():
                         )
                     ).add_to(m)
 
-                # 4. PAPAR NO STESEN (NOMBOR BULAT SAHAJA)
                 if show_stn:
-                    try:
-                        # Menukar "1.0" kepada "1" dengan int(float())
-                        stn_label = int(float(p1['STN']))
-                    except:
-                        stn_label = p1['STN']
+                    try: stn_label = int(float(p1['STN']))
+                    except: stn_label = p1['STN']
                         
                     folium.Marker(
                         [p1['lat'], p1['lon']], 
@@ -147,9 +155,23 @@ def main_app():
 
             folium_static(m, width=1100, height=600)
             
+            # --- BAHAGIAN METRIK (LUAS & PERIMETER) BERDASARKAN RUJUKAN ---
             if show_poly:
                 luas = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-                st.info(f"📐 Luas: {luas:.3f} m²")
+                
+                # Paparan Box Hijau untuk Luas
+                st.markdown(f"""
+                <div style="background-color: #1e3d2f; padding: 15px; border-radius: 10px; border-left: 5px solid #00FF00; margin-bottom: 10px;">
+                    <span style="color: #00FF00; font-size: 20px; font-weight: bold;">📐 Luas: {luas:.3f} m²</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Paparan Box Biru untuk Perimeter
+                st.markdown(f"""
+                <div style="background-color: #1b2e3e; padding: 15px; border-radius: 10px; border-left: 5px solid #3498db;">
+                    <span style="color: #3498db; font-size: 20px; font-weight: bold;">📏 Perimeter: {total_perimeter:.3f} m</span>
+                </div>
+                """, unsafe_allow_html=True)
 
         else:
             st.warning("Fail data tidak dijumpai.")
