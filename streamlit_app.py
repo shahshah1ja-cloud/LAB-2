@@ -54,7 +54,7 @@ try:
             centroid_lat = df['lat'].mean()
             centroid_lon = df['lon'].mean()
             
-            # CIPTA PETA (Max Zoom 22 supaya imej satelit tidak hilang)
+            # CIPTA PETA (Max Zoom 22 supaya imej satelit kekal)
             m = folium.Map(location=[centroid_lat, centroid_lon], zoom_start=20, max_zoom=22)
 
             # GOOGLE HYBRID SATELLITE
@@ -84,11 +84,11 @@ try:
                 
                 label_text = f"{int(bearing_deg)}°{int((bearing_deg%1)*60):02d}' | {dist:.3f}m"
                 
-                # --- FORMULA PUTARAN TEKS (SEJAJAR GARISAN) ---
-                # 90 - bearing_deg menukarkan sudut kompas ke sudut CSS
+                # --- FORMULA PUTARAN TEKS SEJAJAR ---
+                # Mengubah bearing geomatik kepada sudut putaran CSS
                 text_rotation = 90 - bearing_deg 
                 
-                # Supaya tulisan tidak terbalik (Readable)
+                # Menyelaraskan teks supaya sentiasa boleh dibaca (tidak terbalik)
                 if text_rotation > 90: text_rotation -= 180
                 elif text_rotation < -90: text_rotation += 180
 
@@ -98,19 +98,26 @@ try:
                 folium.Marker(
                     [mid_lat, mid_lon],
                     icon=folium.DivIcon(
-                        icon_size=(250,30),
-                        icon_anchor=(125,15),
+                        icon_size=(200,40),
+                        icon_anchor=(100,20), # Anchor tepat di tengah kotak icon_size
                         html=f"""
                         <div style="
-                            font-size: 10pt; 
-                            color: #00FF00; 
-                            font-weight: bold; 
-                            text-align: center; 
-                            white-space: nowrap;
+                            width: 200px;
+                            height: 40px;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
                             transform: rotate({text_rotation}deg);
-                            transform-origin: center;
-                            text-shadow: 2px 2px 3px black;">
-                            {label_text}
+                            transform-origin: center center;
+                            pointer-events: none;">
+                            <span style="
+                                font-size: 10pt; 
+                                color: #00FF00; 
+                                font-weight: bold; 
+                                white-space: nowrap;
+                                text-shadow: 2px 2px 3px black;">
+                                {label_text}
+                            </span>
                         </div>
                         """
                     )
@@ -132,6 +139,6 @@ try:
             c3.metric("Sesi Pengguna", "Khalid")
 
     else:
-        st.error("Fail data tidak dijumpai.")
+        st.error("Fail 'point.csv' tidak dijumpai.")
 except Exception as e:
     st.error(f"Ralat: {e}")
