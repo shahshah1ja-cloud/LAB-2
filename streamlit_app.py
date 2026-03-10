@@ -47,9 +47,9 @@ def main_app():
             
         st.divider()
         
-        # --- FUNGSI UPLOAD CSV (BARU) ---
+        # --- FUNGSI UPLOAD CSV (DIPERBAIKI) ---
         st.markdown("### 📂 Muat Naik Data")
-        uploaded_file = st.file_input("Pilih fail CSV points", type=["csv"])
+        uploaded_file = st.file_uploader("Pilih fail CSV points", type=["csv"])
         
         st.divider()
         st.markdown("### 👁️ Kawalan Paparan")
@@ -79,7 +79,6 @@ def main_app():
     # PROSES DATA
     try:
         df = None
-        # Gunakan fail yang dimuat naik jika ada, jika tidak cari fail lokal
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
         else:
@@ -119,7 +118,6 @@ def main_app():
                 for i in range(len(df)):
                     p1, p2 = df.iloc[i], df.iloc[(i + 1) % len(df)]
                     
-                    # 1. BATU LOT DENGAN POPUP INFO (Termasuk Koordinat)
                     popup_html = f"""
                     <div style="font-family: Arial; width: 180px;">
                         <h4 style="margin-bottom:5px; color: #333;">INFO LOT</h4>
@@ -139,10 +137,8 @@ def main_app():
                         popup=folium.Popup(popup_html, max_width=250)
                     ).add_to(m)
                     
-                    # 2. GARISAN SEMPADAN
                     folium.PolyLine([[p1['lat'], p1['lon']], [p2['lat'], p2['lon']]], color="yellow", weight=3).add_to(m)
                     
-                    # 3. BEARING & JARAK (SEJAJAR)
                     de, dn = p2['E'] - p1['E'], p2['N'] - p1['N']
                     dist = math.sqrt(de**2 + dn**2)
                     line_angle = math.degrees(math.atan2(dn, de))
@@ -179,14 +175,12 @@ def main_app():
             folium_static(m, width=1100, height=600)
             
             if show_poly:
-                # Box Luas (Hijau)
                 st.markdown(f"""
                 <div style="background-color: #1e3d2f; padding: 15px; border-radius: 10px; border-left: 5px solid #00FF00; margin-bottom: 10px;">
                     <span style="color: #00FF00; font-size: 20px; font-weight: bold;">📐 Luas: {luas_val:.3f} m²</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Box Perimeter (Biru)
                 st.markdown(f"""
                 <div style="background-color: #1b2e3e; padding: 15px; border-radius: 10px; border-left: 5px solid #3498db;">
                     <span style="color: #3498db; font-size: 20px; font-weight: bold;">📏 Perimeter: {total_perimeter:.3f} m</span>
